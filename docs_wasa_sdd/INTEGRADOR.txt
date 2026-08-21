@@ -1,0 +1,756 @@
+================================================================================
+  WASA — Web Application Security Assessment
+  Landing Page & FastAPI Bridge
+  Especificación Técnica Integradora (SDD) — v1.1 | 2026-08-21
+  (rev: autenticación JWT + SQLite users)
+================================================================================
+
+Proyecto     : WASA Landing Page & FastAPI Bridge
+Módulo       : Capa de Presentación Pública + Microservicio Puente
+Versión SDD  : 1.1
+Fecha        : 2026-08-21
+Metodología  : SDD (Spec-Driven Development) + FSD (Feature-Sliced Design)
+Tesis base   : Fuzzing Automatizado de Aplicaciones Web — LT1 Implementation
+
+TABLA DE OBJETIVOS
+┌──────────┬────────────────────────────────────────────────────────────────┐
+│ OBJ-01   │ Exponer una interfaz pública (Landing Page) que permita a un   │
+│          │ evaluador iniciar un escaneo WASA sin acceso directo a n8n.    │
+├──────────┼────────────────────────────────────────────────────────────────┤
+│ OBJ-02   │ Implementar autenticación JWT en el FastAPI Bridge para que     │
+│          │ solo usuarios registrados puedan lanzar escaneos.              │
+├──────────┼────────────────────────────────────────────────────────────────┤
+│ OBJ-03   │ Implementar un microservicio FastAPI que valide, sanitice y     │
+│          │ delegue el escaneo al webhook de n8n.                          │
+├──────────┼────────────────────────────────────────────────────────────────┤
+│ OBJ-04   │ Reemplazar el Schedule Trigger de n8n por un Webhook Trigger   │
+│          │ que recibe parámetros dinámicos del FastAPI Bridge.            │
+├──────────┼────────────────────────────────────────────────────────────────┤
+│ OBJ-05   │ Redirigir al usuario al Dashboard existente tras 202 Accepted. │
+└──────────┴────────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+1. STACK TECNOLÓGICO
+================================================================================
+
+┌──────────────────────┬─────────────────────────┬───────────┬───────────────┐
+│ Capa                 │ Tecnología              │ Versión   │ Rol           │
+├──────────────────────┼─────────────────────────┼───────────┼───────────────┤
+│ Frontend — Landing   │ React                   │ 18.x      │ UI framework  │
+│                      │ TypeScript              │ 5.x       │ Tipado        │
+│                      │ Vite                    │ 5.x       │ Build tool    │
+│                      │ Tailwind CSS            │ 3.x       │ Estilos       │
+│                      │ React Hook Form         │ 7.x       │ Form state    │
+│                      │ Zod                     │ 3.x       │ Validación    │
+│                      │ Axios                   │ 1.x       │ HTTP client   │
+│                      │ Zustand                 │ 4.x       │ Auth state    │
+├──────────────────────┼─────────────────────────┼───────────┼───────────────┤
+│ Backend — Bridge     │ Python                  │ 3.11+     │ Lenguaje      │
+│                      │ FastAPI                 │ 0.111+    │ Framework web │
+│                      │ Pydantic v2             │ 2.x       │ Validación    │
+│                      │ python-jose[cryptography]│ 3.x      │ JWT sign/verify│
+│                      │ passlib[bcrypt]         │ 1.x       │ Hash passwords│
+│                      │ SQLAlchemy (async)      │ 2.x       │ ORM           │
+│                      │ aiosqlite               │ 0.19+     │ SQLite driver │
+│                      │ httpx                   │ 0.27+     │ HTTP async    │
+│                      │ slowapi                 │ 0.1.x     │ Rate limiting │
+│                      │ Uvicorn                 │ 0.29+     │ ASGI server   │
+├──────────────────────┼─────────────────────────┼───────────┼───────────────┤
+│ DB Local (Bridge)    │ SQLite                  │ —         │ Usuarios SaaS │
+│                      │ Archivo: users.db       │ —         │ Tabla: users  │
+├──────────────────────┼─────────────────────────┼───────────┼───────────────┤
+│ Orquestación         │ n8n (self-hosted)       │ latest    │ Workflow      │
+│                      │ Webhook Trigger node    │ —         │ Entry point   │
+├──────────────────────┼─────────────────────────┼───────────┼───────────────┤
+│ Infra (existente)    │ Redis / Memurai         │ —         │ Cola FIFO     │
+│                      │ PostgreSQL (db_fuzzing) │ —         │ Scan results  │
+│                      │ Node.js/Express         │ —         │ Dashboard API │
+└──────────────────────┴─────────────────────────┴───────────┴───────────────┘
+
+
+================================================================================
+2. ARQUITECTURA DE CAPAS (DIAGRAMA TEXTUAL)
+================================================================================
+
+  USUARIO (Anónimo o Autenticado)
+     │
+     │  HTTP (browser)
+     ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │  CAPA PRESENTACIÓN PÚBLICA                               │
+  │  React Landing Page (FSD — Feature-Sliced Design)        │
+  │  Puerto: 5173 (dev)                                      │
+  │  ─────────────────────────────────────────────────────── │
+  │  Público:   Hero, Features, HowItWorks, Footer           │
+  │  Protegido: ScanFormWidget (oculto sin JWT)              │
+  │  Muro auth: LoginModal + RegisterModal (Zustand gating)  │
+  │  ─────────────────────────────────────────────────────── │
+  │  app/stores/authStore.ts — Zustand + localStorage        │
+  │  features/auth/         — login, register (forms+hooks)  │
+  │  features/scan-form/    — form + submit con JWT attach   │
+  │  entities/user/         — tipos, loginSchema, regSchema  │
+  │  entities/scan/         — tipos, scanSchema              │
+  │  shared/api/            — axiosInstance (auth interceptor)│
+  └──────────────────────────┬───────────────────────────────┘
+                             │ POST /api/v1/auth/register
+                             │ POST /api/v1/auth/login
+                             │ POST /api/v1/scan/start (Bearer)
+                             ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │  CAPA PUENTE / API BRIDGE                                │
+  │  FastAPI Microservice (Python)                           │
+  │  Puerto: 8000                                            │
+  │  ─── Dominio: Auth ──────────────────────────────────── │
+  │  AuthRouter → AuthService → UserRepository → SQLite      │
+  │  ─── Dominio: Scan (protected) ─────────────────────── │
+  │  ScanRouter (JWT dep) → ScanService → UoW → N8nRepo     │
+  │  ─── Infraestructura ───────────────────────────────── │
+  │  CORS + RateLimit + RFC7807 handlers + BaseSettings      │
+  └────────────┬──────────────────────┬──────────────────────┘
+               │ SQLAlchemy async     │ httpx POST
+               ▼                      ▼
+  ┌────────────────────┐   ┌──────────────────────────────────┐
+  │  SQLite (local)    │   │  CAPA ORQUESTACIÓN               │
+  │  users.db          │   │  n8n Workflow                    │
+  │  Tabla: users      │   │  Webhook Trigger (reemplaza      │
+  └────────────────────┘   │  Schedule Trigger)               │
+                           │  → ZAP → Nuclei → ffuf           │
+                           │  → LPUSH sqlmap_tasks (Redis)    │
+                           └──────────┬───────────────────────┘
+                                      │
+                      ┌───────────────┴──────────────┐
+                      │ BLPOP                         │ INSERT
+                      ▼                              ▼
+           ┌──────────────────────┐  ┌──────────────────────────────┐
+           │ Python SQLMap Worker │  │ PostgreSQL db_fuzzing         │
+           │ (existente)          │──│ scans + vulnerabilities       │
+           └──────────────────────┘  └──────────────┬───────────────┘
+                                                    │ SELECT (REST)
+                                                    ▼
+  ┌─────────────────────────────────────────────────────────┐
+  │  CAPA PRESENTACIÓN INTERNA (existente — no se modifica) │
+  │  Dashboard React / Node.js Express                      │
+  └─────────────────────────────────────────────────────────┘
+
+
+================================================================================
+3. ARQUITECTURA FRONTEND — FEATURE-SLICED DESIGN (FSD)
+================================================================================
+
+DESCRIPCIÓN:
+  La Landing Page sigue FSD organizada en capas de abstracción descendente.
+  Se agrega la capa de estado global de autenticación via Zustand en app/.
+
+CAPAS FSD (de alto a bajo nivel):
+┌─────────────┬─────────────────────────────────────────────────────────────┐
+│ Capa        │ Contenido y Responsabilidad                                 │
+├─────────────┼─────────────────────────────────────────────────────────────┤
+│ app/        │ Entry point. Providers globales, router, estilos globales.  │
+│             │ NUEVO: stores/ contiene authStore.ts (Zustand).             │
+│             │ Archivos: main.tsx, App.tsx, providers.tsx, index.css       │
+│             │ Stores:   app/stores/authStore.ts                           │
+├─────────────┼─────────────────────────────────────────────────────────────┤
+│ pages/      │ Composición de widgets. Sin lógica de negocio propia.       │
+│             │ Archivos: LandingPage/index.tsx                             │
+├─────────────┼─────────────────────────────────────────────────────────────┤
+│ widgets/    │ Secciones autocontenidas y reutilizables.                   │
+│             │ Módulos públicos:                                           │
+│             │   hero/             — HeroWidget.tsx                        │
+│             │   features-section/ — FeaturesWidget.tsx                   │
+│             │   how-it-works/     — HowItWorksWidget.tsx                  │
+│             │   footer/           — FooterWidget.tsx                      │
+│             │ Módulos de auth:                                            │
+│             │   auth-modal/       — LoginModal.tsx, RegisterModal.tsx     │
+│             │ Módulo protegido:                                           │
+│             │   scan-form/        — ScanFormWidget.tsx                    │
+│             │                       (muestra muro o form según authStore) │
+├─────────────┼─────────────────────────────────────────────────────────────┤
+│ features/   │ Lógica de negocio del usuario: acciones, forms, hooks.      │
+│             │ Módulos:                                                     │
+│             │   auth/                                                      │
+│             │     login/                                                   │
+│             │       api/loginApi.ts       — POST /api/v1/auth/login       │
+│             │       model/useLogin.ts     — hook: state, submit, store    │
+│             │       ui/LoginForm.tsx      — componente del form de login  │
+│             │     register/                                                │
+│             │       api/registerApi.ts    — POST /api/v1/auth/register    │
+│             │       model/useRegister.ts  — hook: state, submit, store    │
+│             │       ui/RegisterForm.tsx   — componente del form de reg.   │
+│             │   scan-form/                                                 │
+│             │     api/submitScan.ts       — POST /api/v1/scan/start       │
+│             │     model/useScanForm.ts    — hook: state, submit (+ JWT)   │
+│             │     ui/ScanForm.tsx         — componente del form de scan   │
+├─────────────┼─────────────────────────────────────────────────────────────┤
+│ entities/   │ Tipos de dominio y schemas de validación. Sin lógica UI.    │
+│             │ Módulos:                                                     │
+│             │   user/                                                      │
+│             │     model/types.ts         — UserRegister, UserLogin,       │
+│             │                              TokenResponse, AuthApiError     │
+│             │     model/loginSchema.ts   — schema Zod para el login form  │
+│             │     model/registerSchema.ts— schema Zod para el reg form    │
+│             │   scan/                                                      │
+│             │     model/types.ts         — ScanRequest, ScanResponse      │
+│             │     model/scanSchema.ts    — schema Zod para el scan form   │
+├─────────────┼─────────────────────────────────────────────────────────────┤
+│ shared/     │ Utilidades transversales sin conocimiento de dominio.        │
+│             │ Módulos:                                                     │
+│             │   ui/     — Button, Input, Checkbox, Spinner, Modal (base)  │
+│             │   api/    — axiosInstance.ts (interceptor Bearer desde store)│
+│             │   config/ — env.ts (VITE_API_BASE_URL, DASHBOARD_URL)       │
+│             │   lib/    — utils.ts (cn, jwtIsExpired helper)              │
+└─────────────┴─────────────────────────────────────────────────────────────┘
+
+MÓDULOS FSD — TABLA DETALLADA (nuevos y actualizados):
+┌──────────────────────────────────┬───────────────────────────────────────────┐
+│ Módulo / Archivo                 │ Responsabilidad                           │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ app/stores/authStore.ts          │ Zustand store. State: token, user,        │
+│                                  │ isAuthenticated. Actions: login(token,    │
+│                                  │ email), logout(), hydrate() (lee          │
+│                                  │ localStorage al arrancar). Persist plugin.│
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ shared/api/axiosInstance.ts      │ Instancia Axios. Interceptor de request:  │
+│                                  │ agrega "Authorization: Bearer <token>"    │
+│                                  │ desde authStore si token existe.          │
+│                                  │ Interceptor de response: si 401 → llama  │
+│                                  │ authStore.logout().                       │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ shared/ui/Modal.tsx              │ Componente base de modal (backdrop, close │
+│                                  │ on Escape). Sin conocimiento de dominio.  │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ shared/lib/utils.ts              │ cn() para classnames. jwtIsExpired(token) │
+│                                  │ parsea exp del JWT sin librería extra.    │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ entities/user/model/types.ts     │ UserRegister, UserLogin, TokenResponse,   │
+│                                  │ AuthApiError (tipo de error 401/409).     │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ entities/user/model/             │ Schema Zod: email (z.string().email()),   │
+│ loginSchema.ts                   │ password (z.string().min(1)).             │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ entities/user/model/             │ Schema Zod: email (z.string().email()),   │
+│ registerSchema.ts                │ password (z.string().min(8, "mín 8       │
+│                                  │ caracteres")), confirmPassword con        │
+│                                  │ superRefine para verificar igualdad.     │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ features/auth/login/api/         │ POST /api/v1/auth/login. Retorna          │
+│ loginApi.ts                      │ TokenResponse. Lanza AuthApiError si 401. │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ features/auth/login/model/       │ useForm (RHF) + zodResolver(loginSchema). │
+│ useLogin.ts                      │ handleSubmit → loginApi → authStore.login │
+│                                  │ → cierra modal. Estado: isLoading, error. │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ features/auth/login/ui/          │ Renderiza email + password. Botón         │
+│ LoginForm.tsx                    │ "Ingresar" con loading. Link a register.  │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ features/auth/register/api/      │ POST /api/v1/auth/register. Retorna       │
+│ registerApi.ts                   │ TokenResponse (201). Lanza AuthApiError   │
+│                                  │ si 409 (email dup) o 400 (validación).   │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ features/auth/register/model/    │ useForm (RHF) + zodResolver(regSchema).   │
+│ useRegister.ts                   │ handleSubmit → registerApi → authStore    │
+│                                  │ .login → cierra modal.                   │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ features/auth/register/ui/       │ Renderiza email + password + confirm.     │
+│ RegisterForm.tsx                 │ Botón "Registrarme" con loading.          │
+│                                  │ Link a login.                            │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ widgets/auth-modal/              │ Modal base con LoginForm o RegisterForm.  │
+│ LoginModal.tsx                   │ Cierra al hacer login exitoso.            │
+│ RegisterModal.tsx                │ Cierra al hacer register exitoso.         │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ widgets/scan-form/               │ Lee authStore.isAuthenticated.            │
+│ ScanFormWidget.tsx               │ Si false: muestra AuthWall (botones       │
+│                                  │ "Iniciar Sesión" / "Crear Cuenta" que     │
+│                                  │ abren modales).                           │
+│                                  │ Si true: muestra aviso ético + ScanForm. │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ features/scan-form/api/          │ POST /api/v1/scan/start con JWT adjunto   │
+│ submitScan.ts                    │ (via axiosInstance con interceptor).      │
+│                                  │ Retorna ScanResponse (202) o lanza error. │
+│                                  │ Si 401: error "sesión expirada".         │
+├──────────────────────────────────┼───────────────────────────────────────────┤
+│ features/scan-form/model/        │ useForm + zodResolver(scanSchema).        │
+│ useScanForm.ts                   │ handleSubmit → submitScan. Si 401:        │
+│                                  │ authStore.logout(). En 202: redirect.    │
+└──────────────────────────────────┴───────────────────────────────────────────┘
+
+
+================================================================================
+4. ARQUITECTURA BACKEND — 5 CAPAS FASTAPI (DOS DOMINIOS)
+================================================================================
+
+DESCRIPCIÓN:
+  El FastAPI Bridge tiene DOS dominios bien separados: Auth y Scan.
+  Ambos siguen la misma arquitectura de 5 capas. El dominio Auth agrega
+  una base de datos SQLite local (independiente de PostgreSQL db_fuzzing).
+
+DOMINIO AUTH:
+┌───────────────┬────────────────────────────┬───────────────────┬───────────┐
+│ Capa          │ Archivo                    │ Responsabilidad   │ Conoce a  │
+├───────────────┼────────────────────────────┼───────────────────┼───────────┤
+│ Router        │ api/v1/auth/router.py      │ POST /register    │ Service   │
+│               │                            │ POST /login       │           │
+├───────────────┼────────────────────────────┼───────────────────┼───────────┤
+│ Service       │ services/auth_service.py   │ Hashea password.  │ UoW       │
+│               │                            │ Crea JWT. Verifica│           │
+│               │                            │ credenciales.     │           │
+├───────────────┼────────────────────────────┼───────────────────┼───────────┤
+│ UoW           │ uow/auth_unit_of_work.py   │ Context manager   │ Repository│
+│               │                            │ de sesión async   │           │
+│               │                            │ SQLAlchemy.       │           │
+├───────────────┼────────────────────────────┼───────────────────┼───────────┤
+│ Repository    │ repositories/              │ CRUD sobre tabla  │ SQLAlchemy│
+│               │ user_repository.py         │ users (SQLite).   │ Settings  │
+│               │                            │ get_by_email,     │           │
+│               │                            │ create.           │           │
+├───────────────┼────────────────────────────┼───────────────────┼───────────┤
+│ Schema/Model  │ schemas/auth_schemas.py    │ UserRegister,     │ —         │
+│               │ db/models.py               │ UserLogin,        │           │
+│               │                            │ TokenResponse,    │           │
+│               │                            │ UserInDB (ORM)    │           │
+└───────────────┴────────────────────────────┴───────────────────┴───────────┘
+
+DOMINIO SCAN:
+┌───────────────┬────────────────────────────┬───────────────────┬───────────┐
+│ Capa          │ Archivo                    │ Responsabilidad   │ Conoce a  │
+├───────────────┼────────────────────────────┼───────────────────┼───────────┤
+│ Router        │ api/v1/scan/router.py      │ POST /start       │ Service   │
+│               │                            │ Dep: JWT guard    │           │
+├───────────────┼────────────────────────────┼───────────────────┼───────────┤
+│ Service       │ services/scan_service.py   │ Genera scan_id.   │ UoW       │
+│               │                            │ Construye payload.│           │
+├───────────────┼────────────────────────────┼───────────────────┼───────────┤
+│ UoW           │ uow/scan_unit_of_work.py   │ Ciclo de vida     │ Repository│
+│               │                            │ cliente httpx.    │           │
+├───────────────┼────────────────────────────┼───────────────────┼───────────┤
+│ Repository    │ repositories/              │ POST httpx a      │ httpx     │
+│               │ n8n_repository.py          │ n8n webhook.      │ Settings  │
+├───────────────┼────────────────────────────┼───────────────────┼───────────┤
+│ Schema/Model  │ schemas/scan_schemas.py    │ ScanRequest,      │ —         │
+│               │                            │ ScanResponse,     │           │
+│               │                            │ N8nPayload        │           │
+└───────────────┴────────────────────────────┴───────────────────┴───────────┘
+
+SEGURIDAD JWT — DEPENDENCY:
+┌────────────────────────────┬──────────────────────────────────────────────┐
+│ Archivo                    │ Responsabilidad                              │
+├────────────────────────────┼──────────────────────────────────────────────┤
+│ core/security.py           │ create_access_token(data, expires_delta).    │
+│                            │ decode_access_token(token) → TokenData.      │
+│                            │ Usa python-jose, algoritmo HS256.            │
+├────────────────────────────┼──────────────────────────────────────────────┤
+│ core/dependencies.py       │ get_current_user: FastAPI Depends.           │
+│                            │ Extrae Bearer token del header Authorization.│
+│                            │ Decodifica JWT con security.py.              │
+│                            │ Retorna email del payload o lanza 401.       │
+└────────────────────────────┴──────────────────────────────────────────────┘
+
+ESTRUCTURA DE DIRECTORIOS — FASTAPI BRIDGE (actualizada):
+  fastapi_bridge/
+  ├── main.py                       — app FastAPI, routers, CORS, limiter
+  ├── core/
+  │   ├── settings.py               — Pydantic BaseSettings (lee .env)
+  │   ├── security.py               — JWT create/decode (python-jose)
+  │   └── dependencies.py           — get_current_user (Depends)
+  ├── db/
+  │   ├── base.py                   — SQLAlchemy async engine + Base
+  │   ├── session.py                — AsyncSession factory
+  │   └── models.py                 — ORM model: User
+  ├── api/
+  │   └── v1/
+  │       ├── auth/
+  │       │   └── router.py         — POST /api/v1/auth/register
+  │       │                           POST /api/v1/auth/login
+  │       └── scan/
+  │           └── router.py         — POST /api/v1/scan/start
+  ├── services/
+  │   ├── auth_service.py           — bcrypt hash, JWT, verify credentials
+  │   └── scan_service.py           — genera UUID, llama UoW scan
+  ├── uow/
+  │   ├── auth_unit_of_work.py      — context manager SQLAlchemy session
+  │   └── scan_unit_of_work.py      — context manager httpx client
+  ├── repositories/
+  │   ├── user_repository.py        — get_by_email, create (SQLite)
+  │   └── n8n_repository.py         — forward_scan (httpx)
+  ├── schemas/
+  │   ├── auth_schemas.py           — UserRegister, UserLogin, TokenResponse
+  │   └── scan_schemas.py           — ScanRequest, ScanResponse, N8nPayload
+  └── exceptions/
+      └── handlers.py               — RFC 7807 global handlers
+
+
+================================================================================
+5. SCHEMAS PYDANTIC v2
+================================================================================
+
+── DOMINIO AUTH ────────────────────────────────────────────────────────────────
+
+USER REGISTER (Frontend → FastAPI):
+  Modelo: UserRegister
+  ┌──────────────┬──────────────┬──────────────────────────────────────────┐
+  │ Campo        │ Tipo         │ Restricciones / Validaciones             │
+  ├──────────────┼──────────────┼──────────────────────────────────────────┤
+  │ email        │ EmailStr     │ Requerido. Validación de formato email.   │
+  │ password     │ str          │ Requerido. min_length=8.                 │
+  └──────────────┴──────────────┴──────────────────────────────────────────┘
+
+USER LOGIN (Frontend → FastAPI):
+  Modelo: UserLogin
+  ┌──────────────┬──────────────┬──────────────────────────────────────────┐
+  │ Campo        │ Tipo         │ Restricciones / Validaciones             │
+  ├──────────────┼──────────────┼──────────────────────────────────────────┤
+  │ email        │ EmailStr     │ Requerido.                               │
+  │ password     │ str          │ Requerido. min_length=1.                 │
+  └──────────────┴──────────────┴──────────────────────────────────────────┘
+
+TOKEN RESPONSE (FastAPI → Frontend):
+  Modelo: TokenResponse
+  ┌──────────────┬──────────────┬──────────────────────────────────────────┐
+  │ Campo        │ Tipo         │ Descripción                              │
+  ├──────────────┼──────────────┼──────────────────────────────────────────┤
+  │ access_token │ str          │ JWT firmado con HS256.                   │
+  │ token_type   │ Literal      │ Siempre "bearer".                        │
+  │ expires_in   │ int          │ Segundos hasta expiración (ej: 86400).   │
+  └──────────────┴──────────────┴──────────────────────────────────────────┘
+
+USER IN DB (modelo ORM interno — no se retorna al cliente):
+  Modelo: UserInDB (SQLAlchemy ORM Model)
+  ┌──────────────────┬───────────────────┬──────────────────────────────────┐
+  │ Columna          │ Tipo SQLAlchemy   │ Descripción                      │
+  ├──────────────────┼───────────────────┼──────────────────────────────────┤
+  │ id               │ Integer PK Auto   │ Identificador único.             │
+  │ email            │ String unique NN  │ Email único, lowercase.          │
+  │ hashed_password  │ String NN         │ Hash bcrypt, nunca texto plano.  │
+  │ created_at       │ DateTime          │ Timestamp de creación.           │
+  └──────────────────┴───────────────────┴──────────────────────────────────┘
+
+TOKEN DATA (payload extraído del JWT — uso interno):
+  Modelo: TokenData
+  ┌──────────────┬──────────────┬──────────────────────────────────────────┐
+  │ Campo        │ Tipo         │ Descripción                              │
+  ├──────────────┼──────────────┼──────────────────────────────────────────┤
+  │ email        │ str | None   │ Claim "sub" del JWT. None si inválido.   │
+  └──────────────┴──────────────┴──────────────────────────────────────────┘
+
+── DOMINIO SCAN ────────────────────────────────────────────────────────────────
+
+SCAN REQUEST (Frontend → FastAPI):
+  Modelo: ScanRequest
+  ┌──────────────┬──────────────┬──────────────────────────────────────────┐
+  │ Campo        │ Tipo         │ Restricciones / Validaciones             │
+  ├──────────────┼──────────────┼──────────────────────────────────────────┤
+  │ target_url   │ HttpUrl      │ Requerido. Debe ser URL válida.           │
+  │ phpsessid    │ str          │ Requerido. min_length=1, strip_whitespace.│
+  │ sqlmap_level │ int          │ Opcional. ge=1, le=5. Default=1.         │
+  │ sqlmap_risk  │ int          │ Opcional. ge=1, le=3. Default=1.         │
+  └──────────────┴──────────────┴──────────────────────────────────────────┘
+
+SCAN RESPONSE (FastAPI → Frontend):
+  Modelo: ScanResponse
+  ┌──────────────┬──────────────┬──────────────────────────────────────────┐
+  │ Campo        │ Tipo         │ Descripción                              │
+  ├──────────────┼──────────────┼──────────────────────────────────────────┤
+  │ scan_id      │ str (UUID)   │ Identificador único del escaneo.         │
+  │ status       │ Literal      │ Siempre "queued" en 202 exitoso.         │
+  │ message      │ str          │ Mensaje informativo para el usuario.     │
+  └──────────────┴──────────────┴──────────────────────────────────────────┘
+
+N8N PAYLOAD (FastAPI → n8n Webhook):
+  Modelo: N8nPayload
+  ┌──────────────┬──────────────┬──────────────────────────────────────────┐
+  │ Campo        │ Tipo         │ Descripción                              │
+  ├──────────────┼──────────────┼──────────────────────────────────────────┤
+  │ target_url   │ str          │ URL objetivo (ya validada).              │
+  │ phpsessid    │ str          │ Valor del cookie PHPSESSID.              │
+  │ sqlmap_level │ int          │ Nivel de inyección SQLMap (1-5).         │
+  │ sqlmap_risk  │ int          │ Nivel de riesgo SQLMap (1-3).            │
+  │ scan_id      │ str          │ UUID generado por el Service.            │
+  └──────────────┴──────────────┴──────────────────────────────────────────┘
+
+ERROR DETAIL (formato RFC 7807):
+  Modelo: ErrorDetail
+  ┌──────────────┬──────────────┬──────────────────────────────────────────┐
+  │ Campo        │ Tipo         │ Descripción                              │
+  ├──────────────┼──────────────┼──────────────────────────────────────────┤
+  │ type         │ str          │ URI del tipo de error (/errors/...).     │
+  │ title        │ str          │ Título legible del error.                │
+  │ status       │ int          │ Código HTTP.                             │
+  │ detail       │ str          │ Descripción detallada.                   │
+  │ instance     │ str          │ Path del endpoint que generó el error.   │
+  └──────────────┴──────────────┴──────────────────────────────────────────┘
+
+
+================================================================================
+6. CONTRATO DE API REST — FASTAPI BRIDGE (COMPLETO)
+================================================================================
+
+── AUTH ────────────────────────────────────────────────────────────────────────
+
+ENDPOINT: POST /api/v1/auth/register
+
+  Descripción   : Registra un nuevo usuario y emite JWT (auto-login).
+  Método        : POST
+  Auth          : No requerida
+  Content-Type  : application/json
+
+  REQUEST BODY:
+    { "email": "usuario@ejemplo.com", "password": "miclave123" }
+
+  RESPONSE 201 Created:
+    { "access_token": "eyJ...", "token_type": "bearer", "expires_in": 86400 }
+
+  RESPONSE 400 Bad Request (password < 8 chars o email inválido):
+    { "type": "/errors/validation-failed", "title": "Validation Error",
+      "status": 400, "detail": "password: min 8 characters required",
+      "instance": "/api/v1/auth/register" }
+
+  RESPONSE 409 Conflict (email duplicado):
+    { "type": "/errors/email-already-registered", "title": "Conflict",
+      "status": 409, "detail": "Email already registered.",
+      "instance": "/api/v1/auth/register" }
+
+────────────────────────────────────────────────────────────────────
+
+ENDPOINT: POST /api/v1/auth/login
+
+  Descripción   : Autentica credenciales y emite JWT.
+  Método        : POST
+  Auth          : No requerida
+  Content-Type  : application/json
+
+  REQUEST BODY:
+    { "email": "usuario@ejemplo.com", "password": "miclave123" }
+
+  RESPONSE 200 OK:
+    { "access_token": "eyJ...", "token_type": "bearer", "expires_in": 86400 }
+
+  RESPONSE 401 Unauthorized (credenciales inválidas):
+    { "type": "/errors/invalid-credentials", "title": "Unauthorized",
+      "status": 401, "detail": "Invalid credentials.",
+      "instance": "/api/v1/auth/login" }
+
+── SCAN (REQUIERE JWT) ─────────────────────────────────────────────────────────
+
+ENDPOINT: POST /api/v1/scan/start
+
+  Descripción   : Inicia un escaneo WASA. Requiere Bearer JWT válido.
+  Método        : POST
+  Auth          : Bearer Token (Authorization header)
+  Content-Type  : application/json
+  Rate Limit    : 10 requests / IP / 60 minutos
+
+  REQUEST HEADERS:
+    Authorization: Bearer eyJ...
+
+  REQUEST BODY:
+    { "target_url": "http://dvwa.local", "phpsessid": "abc123",
+      "sqlmap_level": 1, "sqlmap_risk": 1 }
+
+  RESPONSE 202 Accepted:
+    { "scan_id": "f47ac10b-...", "status": "queued",
+      "message": "Escaneo iniciado correctamente. Redirigiendo al Dashboard." }
+
+  RESPONSE 401 Unauthorized (JWT ausente, inválido o expirado):
+    { "type": "/errors/unauthorized", "title": "Unauthorized",
+      "status": 401, "detail": "Invalid or expired token.",
+      "instance": "/api/v1/scan/start" }
+
+  RESPONSE 429 Too Many Requests:
+    { "type": "/errors/rate-limit-exceeded", "title": "Rate Limit Exceeded",
+      "status": 429, "detail": "10 requests per 60 minutes allowed.",
+      "instance": "/api/v1/scan/start" }
+
+  RESPONSE 502 Bad Gateway (n8n no responde):
+    { "type": "/errors/orchestrator-unavailable", "title": "Bad Gateway",
+      "status": 502, "detail": "Could not reach the scan orchestrator.",
+      "instance": "/api/v1/scan/start" }
+
+── HEALTH ──────────────────────────────────────────────────────────────────────
+
+ENDPOINT: GET /health
+  RESPONSE 200 OK:
+    { "status": "ok", "service": "wasa-fastapi-bridge" }
+
+
+================================================================================
+7. CONTRATO DE INTEGRACIÓN — n8n WEBHOOK TRIGGER
+================================================================================
+
+CONFIGURACIÓN DEL NODO:
+  Tipo        : Webhook Trigger
+  Método HTTP : POST
+  URL Path    : /webhook/wasa-scan
+  Auth        : Header Auth (X-WASA-TOKEN — secreto compartido con FastAPI)
+  Response    : Respond Immediately (200 OK sin esperar ejecución completa)
+
+PAYLOAD RECIBIDO POR n8n:
+  {
+    "target_url"   : "http://dvwa.local",
+    "phpsessid"    : "abc123xyz456",
+    "sqlmap_level" : 1,
+    "sqlmap_risk"  : 1,
+    "scan_id"      : "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+  }
+
+VARIABLES DOWNSTREAM EN n8n (acceso via $json):
+  ┌──────────────────┬──────────────────────────────────────────────────────┐
+  │ Variable         │ Nodos que la consumen                                │
+  ├──────────────────┼──────────────────────────────────────────────────────┤
+  │ $json.target_url │ ZAP Spider, ZAP Active Scan, Nuclei, ffuf            │
+  │ $json.phpsessid  │ ffuf (header Cookie), ZAP (session cookie)           │
+  │ $json.sqlmap_level│ Nodo LPUSH Redis                                   │
+  │ $json.sqlmap_risk│ Nodo LPUSH Redis                                    │
+  │ $json.scan_id    │ Nodo INSERT en tabla scans (PostgreSQL)              │
+  └──────────────────┴──────────────────────────────────────────────────────┘
+
+
+================================================================================
+8. FLUJO DE DATOS COMPLETO (END-TO-END)
+================================================================================
+
+  FLUJO DE AUTENTICACIÓN:
+  1.  Usuario anónimo ve muro de auth en ScanFormWidget.
+  2.  Hace clic en "Crear Cuenta" → RegisterModal.tsx se abre.
+  3.  Completa email + password → useRegister.ts → registerApi.ts.
+  4.  POST /api/v1/auth/register → AuthRouter → AuthService:
+      a. Verifica email no duplicado (UserRepository.get_by_email).
+      b. Hashea password con bcrypt.
+      c. UserRepository.create → INSERT en SQLite users.db.
+      d. AuthService.create_access_token → JWT firmado.
+  5.  FastAPI retorna 201 + TokenResponse.
+  6.  Frontend: authStore.login(token, email) → guarda en localStorage.
+  7.  RegisterModal se cierra. ScanFormWidget detecta isAuthenticated=true
+      → muestra aviso ético + ScanForm.
+
+  FLUJO DE ESCANEO (usuario ya autenticado):
+  8.  Usuario completa ScanForm y acepta checkbox ético.
+  9.  useScanForm.ts → submitScan.ts.
+  10. POST /api/v1/scan/start con header Authorization: Bearer <token>.
+  11. FastAPI ScanRouter: Depends(get_current_user) verifica JWT → OK.
+  12. ScanService genera scan_id (UUID v4).
+  13. ScanService → ScanUoW → N8nRepository → POST httpx a n8n webhook.
+  14. n8n responde 200 OK → FastAPI retorna 202 + ScanResponse.
+  15. Frontend: mensaje éxito → redirect a VITE_DASHBOARD_URL.
+  16. n8n ejecuta workflow en background:
+      a. ZAP Spider → ZAP Active Scan → INSERT vulnerabilities.
+      b. Nuclei scan → INSERT vulnerabilities.
+      c. ffuf fuzzing → INSERT (endpoints como info).
+      d. LPUSH sqlmap_tasks → Python Worker → SQLMap → INSERT vuln.
+  17. Dashboard muestra resultados en tiempo real.
+
+
+================================================================================
+9. CONFIGURACIÓN Y VARIABLES DE ENTORNO
+================================================================================
+
+FASTAPI BRIDGE — .env:
+  ┌──────────────────────┬──────────────────────────────────────────────────┐
+  │ Variable             │ Descripción                                      │
+  ├──────────────────────┼──────────────────────────────────────────────────┤
+  │ N8N_WEBHOOK_URL      │ URL completa del Webhook Trigger en n8n.         │
+  │ N8N_WEBHOOK_TOKEN    │ Token secreto para autenticar request a n8n.     │
+  │ JWT_SECRET           │ Clave secreta para firmar/verificar JWT (HS256). │
+  │ TOKEN_EXPIRE_HOURS   │ Tiempo de vida del JWT en horas. Default: 24.    │
+  │ DB_URL               │ sqlite+aiosqlite:///./users.db                   │
+  │ CORS_ORIGINS         │ Orígenes permitidos (Landing Page URL).          │
+  │ RATE_LIMIT_REQUESTS  │ Max requests por ventana. Default: 10.           │
+  │ RATE_LIMIT_WINDOW    │ Ventana en segundos. Default: 3600.              │
+  │ APP_ENV              │ development | production                         │
+  └──────────────────────┴──────────────────────────────────────────────────┘
+
+REACT LANDING PAGE — .env:
+  ┌──────────────────────┬──────────────────────────────────────────────────┐
+  │ Variable             │ Descripción                                      │
+  ├──────────────────────┼──────────────────────────────────────────────────┤
+  │ VITE_API_BASE_URL    │ URL base del FastAPI Bridge.                     │
+  │ VITE_DASHBOARD_URL   │ URL del Dashboard React/Node.js existente.       │
+  └──────────────────────┴──────────────────────────────────────────────────┘
+
+
+================================================================================
+10. MODELO DE DATOS
+================================================================================
+
+BASE DE DATOS LOCAL (FastAPI Bridge — SQLite users.db):
+  TABLA: users
+  ┌──────────────────┬──────────────────┬────────────────────────────────────┐
+  │ Columna          │ Tipo             │ Descripción                        │
+  ├──────────────────┼──────────────────┼────────────────────────────────────┤
+  │ id               │ INTEGER PK AUTO  │ Identificador de usuario.          │
+  │ email            │ TEXT UNIQUE NN   │ Email único. Normalizado lowercase. │
+  │ hashed_password  │ TEXT NOT NULL    │ Hash bcrypt. Nunca texto plano.     │
+  │ created_at       │ TIMESTAMP        │ Fecha de registro.                 │
+  └──────────────────┴──────────────────┴────────────────────────────────────┘
+
+BASE DE DATOS WASA (PostgreSQL db_fuzzing — SOLO REFERENCIA, no modificada):
+  TABLA: scans
+  ┌──────────────┬─────────────┬────────────────────────────────────────────┐
+  │ Columna      │ Tipo        │ Descripción                                │
+  ├──────────────┼─────────────┼────────────────────────────────────────────┤
+  │ id           │ SERIAL PK   │ Identificador de escaneo.                  │
+  │ target_url   │ TEXT        │ URL escaneada.                             │
+  │ scan_date    │ TIMESTAMP   │ Fecha/hora de inicio.                      │
+  │ zap_count    │ INT         │ Vulnerabilidades ZAP.                      │
+  │ nuclei_count │ INT         │ Vulnerabilidades Nuclei.                   │
+  │ ffuf_count   │ INT         │ Endpoints ffuf.                            │
+  │ sqlmap_count │ INT         │ Vulnerabilidades SQLMap.                   │
+  └──────────────┴─────────────┴────────────────────────────────────────────┘
+
+  TABLA: vulnerabilities
+  ┌──────────────┬─────────────┬────────────────────────────────────────────┐
+  │ Columna      │ Tipo        │ Descripción                                │
+  ├──────────────┼─────────────┼────────────────────────────────────────────┤
+  │ id           │ SERIAL PK   │ Identificador de vulnerabilidad.           │
+  │ scan_id      │ INT FK      │ Referencia a scans.id.                     │
+  │ source       │ TEXT        │ zap|nuclei|ffuf|sqlmap.                    │
+  │ type         │ TEXT        │ Tipo de vulnerabilidad.                    │
+  │ severity     │ TEXT        │ low|medium|high|critical.                  │
+  │ url          │ TEXT        │ URL afectada.                              │
+  │ description  │ TEXT        │ Descripción del hallazgo.                  │
+  │ solution     │ TEXT        │ Remediación sugerida.                      │
+  │ cweid        │ TEXT        │ CWE ID si aplica.                          │
+  │ evidence     │ TEXT        │ Evidencia técnica.                         │
+  └──────────────┴─────────────┴────────────────────────────────────────────┘
+
+
+================================================================================
+11. PATRONES Y CONVENCIONES
+================================================================================
+
+BACKEND (FastAPI Bridge):
+  - Repository Pattern    : UserRepository y N8nRepository abstraen el
+                            acceso a datos. Los servicios no conocen
+                            SQLAlchemy ni httpx directamente.
+  - Unit of Work Pattern  : AuthUoW gestiona la sesión SQLAlchemy async.
+                            ScanUoW gestiona el cliente httpx async.
+  - JWT Bearer Auth       : python-jose (HS256). Dependency FastAPI
+                            (get_current_user) protege /scan/start.
+                            El secreto vive SOLO en variables de entorno.
+  - Password Hashing      : passlib con bcrypt (rounds=12). Nunca se
+                            compara texto plano; siempre bcrypt.verify.
+  - Pydantic BaseSettings : Toda configuración se lee de .env.
+  - RFC 7807              : Todos los errores siguen Problem Details.
+  - Fire-and-Forward      : El Bridge no espera el resultado del escaneo.
+
+FRONTEND (React Landing):
+  - FSD (Feature-Sliced)  : Capas con dependencias unidireccionales.
+  - Zustand               : authStore como fuente única de verdad para
+                            el estado de autenticación. Persistido en
+                            localStorage con el plugin persist.
+  - Axios Interceptor     : Agrega Bearer token a cada request
+                            automáticamente. Limpia authStore en 401.
+  - Zod + RHF             : Validación declarativa en todos los forms
+                            (login, register, scan).
+  - Auth Gating           : ScanFormWidget lee authStore.isAuthenticated.
+                            Si false → muestra muro. Si true → muestra form.
+  - Mobile-first          : Tailwind breakpoints sm → md → lg.
+
+NOMENCLATURA:
+  - Archivos Python       : snake_case.py
+  - Archivos TypeScript   : camelCase.ts / PascalCase.tsx (componentes)
+  - Variables de entorno  : UPPER_SNAKE_CASE
+  - Endpoints REST        : /api/v1/resource/action (kebab-case)
+  - Schemas Pydantic      : PascalCase (UserRegister, ScanRequest)
+  - Tipos TypeScript      : PascalCase (TokenResponse, ScanRequest)
+  - Stores Zustand        : camelCase con sufijo "Store" (authStore)

@@ -1,0 +1,705 @@
+================================================================================
+  WASA — Web Application Security Assessment
+  Landing Page & FastAPI Bridge
+  Historias de Usuario — v1.1 | 2026-08-21 (rev: autenticación JWT)
+================================================================================
+
+ÍNDICE
+──────
+  A. Actores
+  B. Reglas de Negocio
+  C. Historias de Usuario por EPIC
+
+
+================================================================================
+A. ACTORES
+================================================================================
+
+┌─────────────────────┬──────────────────────────────────────────────────────┐
+│ Actor               │ Descripción                                          │
+├─────────────────────┼──────────────────────────────────────────────────────┤
+│ Usuario Anónimo     │ Visitante no autenticado. Puede ver las secciones    │
+│ (UA)                │ informativas de la Landing Page (Hero, Features,     │
+│                     │ HowItWorks, Footer, aviso ético). NO puede acceder  │
+│                     │ al formulario de escaneo.                           │
+├─────────────────────┼──────────────────────────────────────────────────────┤
+│ Usuario Evaluador   │ Profesional de seguridad o estudiante con cuenta     │
+│ (UE)                │ registrada y sesión activa (JWT válido). Puede       │
+│                     │ configurar y lanzar escaneos. Posee autorización     │
+│                     │ para escanear el sistema objetivo.                  │
+├─────────────────────┼──────────────────────────────────────────────────────┤
+│ FastAPI Bridge      │ Microservicio Python que gestiona usuarios (SQLite), │
+│ (FB)                │ emite JWTs, verifica tokens y delega escaneos a n8n. │
+├─────────────────────┼──────────────────────────────────────────────────────┤
+│ Sistema WASA        │ Conjunto de componentes internos: n8n, ZAP, Nuclei,  │
+│ (SW)                │ ffuf, SQLMap Worker, Redis, PostgreSQL, Dashboard.   │
+└─────────────────────┴──────────────────────────────────────────────────────┘
+
+
+================================================================================
+B. REGLAS DE NEGOCIO
+================================================================================
+
+┌────────────┬──────────────────────────────────────────────┬─────────────────┐
+│ ID         │ Regla                                        │ HU Asociadas    │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-01   │ El formulario de escaneo solo puede ser      │ HU-02-01        │
+│            │ enviado si el checkbox de declaración ética  │ HU-02-05        │
+│            │ está marcado. El botón "Escanear" permanece  │                 │
+│            │ deshabilitado hasta que se cumpla.           │                 │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-02   │ El campo target_url debe ser una URL válida  │ HU-02-02        │
+│            │ con esquema http:// o https://. Se rechaza   │ HU-03-02        │
+│            │ cualquier valor que no cumpla este formato.  │                 │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-03   │ El campo phpsessid es obligatorio. No se     │ HU-02-03        │
+│            │ acepta cadena vacía ni espacios en blanco.   │ HU-03-02        │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-04   │ sqlmap_level debe ser entero entre 1 y 5.    │ HU-02-04        │
+│            │ Valor por defecto: 1.                        │ HU-03-02        │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-05   │ sqlmap_risk debe ser entero entre 1 y 3.     │ HU-02-04        │
+│            │ Valor por defecto: 1.                        │ HU-03-02        │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-06   │ El FastAPI Bridge aplica rate limiting de    │ HU-03-03        │
+│            │ 10 solicitudes por IP por ventana de 60      │                 │
+│            │ minutos sobre /scan/start. Las solicitudes   │                 │
+│            │ excedentes reciben 429 Too Many Requests.    │                 │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-07   │ El FastAPI Bridge NO ejecuta herramientas    │ HU-03-03        │
+│            │ de seguridad directamente. Solo valida y     │                 │
+│            │ delega al webhook de n8n.                    │                 │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-08   │ Tras recibir 202 Accepted del FastAPI        │ HU-05-01        │
+│            │ Bridge, el frontend redirige automáticamente │                 │
+│            │ al Dashboard existente (React/Node.js).      │                 │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-09   │ Los errores del FastAPI Bridge deben seguir  │ HU-03-04        │
+│            │ el formato RFC 7807 (Problem Details for     │                 │
+│            │ HTTP APIs).                                  │                 │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-10   │ El formulario de escaneo está OCULTO para    │ HU-06-01        │
+│            │ usuarios no autenticados. En su lugar, se    │ HU-02-01        │
+│            │ muestra un muro de autenticación con botones │                 │
+│            │ "Iniciar Sesión" y "Crear Cuenta".           │                 │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-11   │ El endpoint POST /api/v1/scan/start requiere │ HU-06-04        │
+│            │ un JWT válido en el header Authorization     │ HU-03-02        │
+│            │ (Bearer token). Sin él: 401 Unauthorized.    │                 │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-12   │ Las contraseñas se almacenan exclusivamente  │ HU-06-02        │
+│            │ como hash bcrypt. El texto plano nunca se    │                 │
+│            │ persiste ni se retorna en ninguna respuesta. │                 │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-13   │ El email del usuario debe ser único en la    │ HU-06-02        │
+│            │ base de datos. Un intento de registro con    │                 │
+│            │ email duplicado retorna 409 Conflict.        │                 │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-14   │ Los JWT tienen tiempo de expiración          │ HU-06-03        │
+│            │ configurable (default: 24h). Al expirar,     │                 │
+│            │ el frontend limpia el authStore y muestra    │                 │
+│            │ nuevamente el muro de autenticación.         │                 │
+├────────────┼──────────────────────────────────────────────┼─────────────────┤
+│ RN-WS-15   │ La contraseña mínima es 8 caracteres. Esta   │ HU-06-02        │
+│            │ validación ocurre tanto en frontend (Zod)    │                 │
+│            │ como en backend (Pydantic v2).               │                 │
+└────────────┴──────────────────────────────────────────────┴─────────────────┘
+
+
+================================================================================
+C. HISTORIAS DE USUARIO POR EPIC
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+EPIC-01: LANDING PAGE — COMUNICACIÓN Y DESCUBRIMIENTO
+────────────────────────────────────────────────────────────────────────────────
+
+Descripción:
+  Toda la sección informativa pública de la Landing Page. Accesible por
+  cualquier visitante, autenticado o no.
+
+─────────────────────────────
+HU-01-01: Ver sección Hero
+─────────────────────────────
+Título: Presentación principal de WASA
+
+Historia:
+  Como Usuario Anónimo,
+  quiero ver una sección hero con el nombre, tagline y call-to-action de WASA,
+  para que pueda entender de inmediato de qué trata el sistema.
+
+Prioridad: Alta
+Dependencias: Ninguna
+
+Criterios de Aceptación:
+  - [ ] La sección Hero muestra el nombre "WASA" y un tagline descriptivo.
+  - [ ] Hay un botón CTA "Comenzar" que, si el usuario no está autenticado,
+        abre el modal de login; si está autenticado, hace scroll hasta el
+        formulario de escaneo (#scan-form).
+  - [ ] El diseño es responsive: se adapta a mobile y desktop.
+  - [ ] El Hero tiene una imagen o ilustración que representa seguridad web.
+
+─────────────────────────────────────────────
+HU-01-02: Ver herramientas utilizadas por WASA
+─────────────────────────────────────────────
+Título: Sección de características y herramientas
+
+Historia:
+  Como Usuario Anónimo,
+  quiero ver una sección que explique las herramientas que usa WASA (ZAP,
+  Nuclei, ffuf, SQLMap) y qué detecta cada una,
+  para que pueda evaluar si el sistema cubre mis necesidades de auditoría.
+
+Prioridad: Alta
+Dependencias: HU-01-01
+
+Criterios de Aceptación:
+  - [ ] La sección muestra al menos 4 tarjetas, una por herramienta.
+  - [ ] Cada tarjeta tiene: nombre, ícono y descripción breve.
+  - [ ] ZAP: Spider + Active Scan. Nuclei: CVE templates. ffuf: directory
+        fuzzing. SQLMap: SQL injection configurable.
+  - [ ] La sección es responsive.
+
+──────────────────────────────────────────────
+HU-01-03: Entender el flujo paso a paso de WASA
+──────────────────────────────────────────────
+Título: Sección "¿Cómo funciona?"
+
+Historia:
+  Como Usuario Anónimo,
+  quiero ver una sección visual que explique el proceso de escaneo paso a paso,
+  para que pueda entender qué sucede tras hacer clic en "Escanear".
+
+Prioridad: Media
+Dependencias: HU-01-01
+
+Criterios de Aceptación:
+  - [ ] La sección muestra al menos 4 pasos numerados.
+  - [ ] Los pasos cubren: crear cuenta, configurar objetivo, enviar, ver resultados.
+  - [ ] Cada paso tiene un ícono o número visual prominente.
+  - [ ] La sección abstrae completamente la existencia de n8n.
+  - [ ] Es responsive.
+
+──────────────────────────────────────────────
+HU-01-04: Ver aviso ético y legal
+──────────────────────────────────────────────
+Título: Aviso de uso ético en Landing
+
+Historia:
+  Como Usuario Anónimo,
+  quiero ver un aviso claro que indique que WASA solo debe usarse sobre
+  sistemas con autorización,
+  para que quede explícito el marco ético antes de registrarme.
+
+Prioridad: Alta
+Dependencias: HU-01-01
+
+Criterios de Aceptación:
+  - [ ] Hay una sección o banner con aviso ético visible antes del muro de auth.
+  - [ ] El aviso menciona explícitamente "autorización del propietario".
+  - [ ] El texto es claro, sin jerga técnica excesiva.
+  - [ ] El aviso no puede ser ocultado por el usuario.
+
+────────────────────────────────────────────────────────────────────────────────
+EPIC-02: FORMULARIO DE ESCANEO — CONFIGURACIÓN (SOLO AUTENTICADOS)
+────────────────────────────────────────────────────────────────────────────────
+
+Descripción:
+  El formulario de configuración del escaneo. Solo visible para usuarios
+  con sesión activa (JWT válido en authStore).
+
+──────────────────────────────────────────────
+HU-02-01: Ver el formulario de escaneo (autenticado)
+──────────────────────────────────────────────
+Título: Acceso al formulario tras autenticación
+
+Historia:
+  Como Usuario Evaluador,
+  quiero ver el formulario de escaneo después de iniciar sesión,
+  para que pueda ingresar mis parámetros sin ambigüedad.
+
+Prioridad: Alta
+Dependencias: HU-06-01 (login exitoso)
+Reglas: RN-WS-10
+
+Criterios de Aceptación:
+  - [ ] El formulario es visible ÚNICAMENTE si el authStore tiene JWT válido.
+  - [ ] El formulario tiene los campos: target_url, phpsessid, sqlmap_level,
+        sqlmap_risk, checkbox de declaración ética.
+  - [ ] Cada campo tiene label descriptivo y placeholder de ejemplo.
+  - [ ] Los campos sqlmap_level y sqlmap_risk tienen valores predeterminados (1).
+  - [ ] El formulario es responsive.
+
+──────────────────────────────────────────────
+HU-02-02: Validar el campo target_url
+──────────────────────────────────────────────
+Título: Validación de URL objetivo
+
+Historia:
+  Como Usuario Evaluador,
+  quiero que el formulario me indique si ingresé una URL inválida,
+  para que pueda corregirla antes de enviar.
+
+Prioridad: Alta
+Dependencias: HU-02-01
+
+Criterios de Aceptación:
+  - [ ] Si target_url está vacío: mensaje "URL requerida".
+  - [ ] Si target_url no tiene esquema http/https: mensaje específico de error.
+  - [ ] La validación ocurre en tiempo real (onChange) y al perder el foco.
+  - [ ] El campo se marca con borde rojo en error, borde verde cuando válido.
+
+──────────────────────────────────────────────
+HU-02-03: Validar el campo phpsessid
+──────────────────────────────────────────────
+Título: Validación de cookie de sesión
+
+Historia:
+  Como Usuario Evaluador,
+  quiero que el formulario valide que ingresé un valor para PHPSESSID,
+  para que el escaneo acceda correctamente a las páginas autenticadas.
+
+Prioridad: Alta
+Dependencias: HU-02-01
+
+Criterios de Aceptación:
+  - [ ] Si phpsessid está vacío: mensaje "PHPSESSID requerido".
+  - [ ] La validación ocurre al perder el foco y al intentar enviar.
+  - [ ] No acepta cadenas con solo espacios en blanco.
+
+──────────────────────────────────────────────
+HU-02-04: Configurar parámetros avanzados de SQLMap
+──────────────────────────────────────────────
+Título: Controles de nivel y riesgo SQLMap
+
+Historia:
+  Como Usuario Evaluador,
+  quiero poder ajustar el nivel y riesgo de SQLMap,
+  para que pueda calibrar la profundidad del análisis.
+
+Prioridad: Media
+Dependencias: HU-02-01
+
+Criterios de Aceptación:
+  - [ ] sqlmap_level: control numérico rango 1-5, default 1.
+  - [ ] sqlmap_risk: control numérico rango 1-3, default 1.
+  - [ ] Ambos controles tienen tooltip del impacto de cada nivel.
+  - [ ] Valores fuera de rango se restringen al límite.
+
+──────────────────────────────────────────────
+HU-02-05: Aceptar declaración ética
+──────────────────────────────────────────────
+Título: Checkbox de autorización ética
+
+Historia:
+  Como Usuario Evaluador,
+  quiero marcar una casilla declarando que tengo autorización para escanear,
+  para que quede registrado mi consentimiento informado.
+
+Prioridad: Alta
+Dependencias: HU-02-01
+Reglas: RN-WS-01
+
+Criterios de Aceptación:
+  - [ ] El formulario tiene checkbox con texto: "Declaro que cuento con
+        autorización explícita para escanear este sistema."
+  - [ ] El botón "Escanear" está deshabilitado sin checkbox marcado.
+  - [ ] Al marcar el checkbox, el botón "Escanear" se habilita.
+
+────────────────────────────────────────────────────────────────────────────────
+EPIC-03: FASTAPI BRIDGE — AUTH + VALIDACIÓN + FORWARDING
+────────────────────────────────────────────────────────────────────────────────
+
+Descripción:
+  El microservicio FastAPI. Gestiona usuarios (SQLite), emite JWT, protege
+  endpoints con Bearer auth, valida, aplica rate limiting y delega a n8n.
+
+──────────────────────────────────────────────
+HU-03-01: Registrar un nuevo usuario
+──────────────────────────────────────────────
+Título: Endpoint de registro con JWT inmediato
+
+Historia:
+  Como FastAPI Bridge,
+  quiero exponer un endpoint POST /api/v1/auth/register que registre al
+  usuario y emita un JWT de inmediato,
+  para que el frontend pueda autenticar al usuario sin un paso de login
+  adicional tras el registro.
+
+Prioridad: Alta
+Dependencias: Ninguna (backend puro)
+Reglas: RN-WS-12, RN-WS-13, RN-WS-15
+
+Criterios de Aceptación:
+  - [ ] Request válido con email+password: crea usuario en SQLite, retorna 201
+        con TokenResponse (access_token, token_type, expires_in).
+  - [ ] Email ya existente retorna 409 Conflict (RFC 7807).
+  - [ ] Email inválido retorna 400 (Pydantic EmailStr).
+  - [ ] Password < 8 caracteres retorna 400.
+  - [ ] La contraseña se guarda hasheada con bcrypt (passlib, rounds=12).
+  - [ ] El texto plano de la contraseña NO aparece en ninguna respuesta ni log.
+
+──────────────────────────────────────────────
+HU-03-02: Autenticar usuario existente
+──────────────────────────────────────────────
+Título: Endpoint de login con verificación bcrypt
+
+Historia:
+  Como FastAPI Bridge,
+  quiero exponer un endpoint POST /api/v1/auth/login que verifique
+  credenciales y emita un JWT,
+  para que un usuario ya registrado pueda iniciar sesión.
+
+Prioridad: Alta
+Dependencias: HU-03-01
+Reglas: RN-WS-12, RN-WS-14
+
+Criterios de Aceptación:
+  - [ ] Request con email+password correctos: retorna 200 + TokenResponse.
+  - [ ] Request con email inexistente: retorna 401 Unauthorized (RFC 7807).
+  - [ ] Request con contraseña incorrecta: retorna 401 Unauthorized (RFC 7807).
+  - [ ] El mensaje de error 401 NO indica cuál de los dos campos es incorrecto
+        (evita enumeración de usuarios).
+  - [ ] El JWT generado contiene: sub (email), exp (timestamp expiración).
+
+──────────────────────────────────────────────
+HU-03-03: Proteger /scan/start con JWT Bearer
+──────────────────────────────────────────────
+Título: Dependency de autenticación en endpoint de escaneo
+
+Historia:
+  Como FastAPI Bridge,
+  quiero que el endpoint POST /api/v1/scan/start requiera un JWT válido,
+  para que nadie sin cuenta pueda lanzar escaneos.
+
+Prioridad: Alta
+Dependencias: HU-03-01, HU-03-02
+Reglas: RN-WS-11, RN-WS-14
+
+Criterios de Aceptación:
+  - [ ] Request sin header Authorization: 401 Unauthorized.
+  - [ ] Request con JWT malformado: 401 Unauthorized.
+  - [ ] Request con JWT expirado: 401 Unauthorized.
+  - [ ] Request con JWT válido: pasa la validación y continúa al flujo de scan.
+  - [ ] La dependency `get_current_user` extrae el email del payload del JWT.
+
+──────────────────────────────────────────────
+HU-03-04: Validar payload del escaneo
+──────────────────────────────────────────────
+Título: Validación Pydantic del cuerpo del scan
+
+Historia:
+  Como FastAPI Bridge,
+  quiero validar automáticamente el payload de escaneo con Pydantic v2,
+  para que ningún dato malformado llegue al sistema n8n.
+
+Prioridad: Alta
+Dependencias: HU-03-03
+Reglas: RN-WS-02, RN-WS-03, RN-WS-04, RN-WS-05
+
+Criterios de Aceptación:
+  - [ ] Si target_url no es URL válida: respuesta 400 con detalle de error.
+  - [ ] Si phpsessid está vacío: respuesta 422.
+  - [ ] Si sqlmap_level < 1 o > 5: respuesta 400 con detalle de rango.
+  - [ ] Si sqlmap_risk < 1 o > 3: respuesta 400 con detalle de rango.
+  - [ ] Todos los errores siguen formato RFC 7807.
+
+──────────────────────────────────────────────
+HU-03-05: Delegar escaneo a n8n via webhook
+──────────────────────────────────────────────
+Título: Forwarding al Webhook Trigger de n8n
+
+Historia:
+  Como FastAPI Bridge,
+  quiero reenviar el payload validado al Webhook Trigger de n8n,
+  para que el workflow de orquestación comience con los parámetros correctos.
+
+Prioridad: Alta
+Dependencias: HU-03-04
+Reglas: RN-WS-07
+
+Criterios de Aceptación:
+  - [ ] El payload enviado a n8n incluye: target_url, phpsessid,
+        sqlmap_level, sqlmap_risk, scan_id (UUID generado).
+  - [ ] Si n8n responde 200 OK: FastAPI retorna 202 Accepted.
+  - [ ] Si n8n no responde o retorna error: FastAPI retorna 502 Bad Gateway.
+
+──────────────────────────────────────────────
+HU-03-06: Aplicar rate limiting por IP en /scan/start
+──────────────────────────────────────────────
+Título: Límite de solicitudes de escaneo por IP
+
+Historia:
+  Como FastAPI Bridge,
+  quiero limitar las solicitudes de escaneo a 10 por IP por hora,
+  para que no se pueda abusar del sistema.
+
+Prioridad: Alta
+Dependencias: HU-03-03
+Reglas: RN-WS-06
+
+Criterios de Aceptación:
+  - [ ] Las primeras 10 solicitudes (misma IP, 60 min) se procesan normalmente.
+  - [ ] La solicitud 11 recibe 429 Too Many Requests.
+  - [ ] La respuesta 429 incluye header Retry-After.
+  - [ ] Los límites son configurables via variables de entorno.
+
+──────────────────────────────────────────────
+HU-03-07: Retornar errores en formato RFC 7807
+──────────────────────────────────────────────
+Título: Respuestas de error estandarizadas
+
+Historia:
+  Como FastAPI Bridge,
+  quiero que todos los errores sigan el formato RFC 7807,
+  para que el frontend procese errores de forma consistente.
+
+Prioridad: Media
+Dependencias: HU-03-01, HU-03-03, HU-03-06
+Reglas: RN-WS-09
+
+Criterios de Aceptación:
+  - [ ] Todos los errores incluyen: type, title, status, detail, instance.
+  - [ ] Los errores 400, 401, 409, 422, 429, 502, 500 están cubiertos.
+  - [ ] El handler global de excepciones FastAPI aplica el formato.
+
+────────────────────────────────────────────────────────────────────────────────
+EPIC-04: INTEGRACIÓN n8n — WEBHOOK TRIGGER
+────────────────────────────────────────────────────────────────────────────────
+
+Descripción:
+  Configuración del Webhook Trigger en n8n. Punto de contacto entre
+  FastAPI Bridge y el workflow existente.
+
+──────────────────────────────────────────────
+HU-04-01: Configurar Webhook Trigger en n8n
+──────────────────────────────────────────────
+Título: Reemplazar Schedule Trigger por Webhook Trigger
+
+Historia:
+  Como administrador del sistema WASA,
+  quiero reemplazar el Schedule Trigger por un Webhook Trigger en n8n,
+  para que el escaneo se inicie a demanda desde el FastAPI Bridge.
+
+Prioridad: Alta
+Dependencias: HU-03-05
+
+Criterios de Aceptación:
+  - [ ] El workflow tiene un nodo Webhook Trigger activo (POST, JSON).
+  - [ ] Los campos recibidos están disponibles como $json en nodos downstream.
+  - [ ] El nodo Schedule Trigger anterior está desactivado o eliminado.
+  - [ ] El webhook responde 200 OK inmediatamente (background execution).
+
+──────────────────────────────────────────────
+HU-04-02: Inyectar variables del webhook en el workflow
+──────────────────────────────────────────────
+Título: Propagación de parámetros en n8n
+
+Historia:
+  Como sistema WASA,
+  quiero que las variables del webhook estén disponibles en todos los nodos,
+  para que ZAP, Nuclei, ffuf y SQLMap operen sobre el objetivo correcto.
+
+Prioridad: Alta
+Dependencias: HU-04-01
+
+Criterios de Aceptación:
+  - [ ] $json.target_url disponible en ZAP Spider, ZAP Active Scan, Nuclei, ffuf.
+  - [ ] $json.phpsessid disponible para construir header Cookie en ffuf.
+  - [ ] $json.sqlmap_level y $json.sqlmap_risk disponibles en el nodo LPUSH Redis.
+  - [ ] $json.scan_id disponible para INSERT en tabla scans de PostgreSQL.
+
+────────────────────────────────────────────────────────────────────────────────
+EPIC-05: REDIRECCIÓN — NAVEGACIÓN AL DASHBOARD
+────────────────────────────────────────────────────────────────────────────────
+
+Descripción:
+  Comportamiento del frontend tras el inicio exitoso del escaneo.
+
+──────────────────────────────────────────────
+HU-05-01: Redirección automática al Dashboard
+──────────────────────────────────────────────
+Título: Navegación al Dashboard tras escaneo iniciado
+
+Historia:
+  Como Usuario Evaluador,
+  quiero ser redirigido automáticamente al Dashboard de WASA tras iniciar
+  el escaneo,
+  para que pueda ver el progreso y los resultados sin navegar manualmente.
+
+Prioridad: Alta
+Dependencias: HU-03-05
+Reglas: RN-WS-08
+
+Criterios de Aceptación:
+  - [ ] Cuando FastAPI retorna 202, el frontend inicia la redirección.
+  - [ ] La redirección va a la URL configurada en VITE_DASHBOARD_URL.
+  - [ ] Antes de redirigir, se muestra mensaje de éxito ("Escaneo iniciado.
+        Redirigiendo...") por ~2 segundos.
+  - [ ] Si el 202 tarda > 10 segundos: se muestra spinner de carga.
+
+──────────────────────────────────────────────
+HU-05-02: Ver estado de carga durante el envío
+──────────────────────────────────────────────
+Título: Indicador de progreso en formulario
+
+Historia:
+  Como Usuario Evaluador,
+  quiero ver un indicador visual mientras el formulario espera respuesta,
+  para que sepa que el sistema está procesando y no hice clic dos veces.
+
+Prioridad: Media
+Dependencias: HU-02-01, HU-05-01
+
+Criterios de Aceptación:
+  - [ ] Al hacer clic en "Escanear", el botón cambia a estado de carga.
+  - [ ] El botón queda deshabilitado durante la espera.
+  - [ ] Si la respuesta es exitosa (202): mensaje verde y redirección.
+  - [ ] Si la respuesta es error: mensaje rojo y botón vuelve a estado normal.
+
+──────────────────────────────────────────────
+HU-05-03: Ver errores del servidor en el formulario
+──────────────────────────────────────────────
+Título: Manejo de errores de red y servidor
+
+Historia:
+  Como Usuario Evaluador,
+  quiero ver un mensaje claro si el servidor falla,
+  para que pueda intentarlo de nuevo o saber qué ocurrió.
+
+Prioridad: Media
+Dependencias: HU-03-07, HU-05-01
+
+Criterios de Aceptación:
+  - [ ] Error 401: mensaje "Sesión expirada. Por favor iniciá sesión nuevamente."
+        → el authStore se limpia y se muestra el muro de auth.
+  - [ ] Error 400/422: se muestra el campo inválido con el mensaje del servidor.
+  - [ ] Error 429: "Límite de escaneos alcanzado. Intente en X minutos."
+  - [ ] Error 502: "El sistema de escaneo no está disponible. Intente más tarde."
+  - [ ] Error de red: "Sin conexión con el servidor."
+  - [ ] Todos los mensajes usan tono informativo, no técnico.
+
+────────────────────────────────────────────────────────────────────────────────
+EPIC-06: AUTENTICACIÓN — REGISTRO Y LOGIN
+────────────────────────────────────────────────────────────────────────────────
+
+Descripción:
+  Todas las interacciones del usuario con el sistema de autenticación:
+  registro, login, persistencia del token y cierre de sesión.
+
+──────────────────────────────────────────────
+HU-06-01: Ver muro de autenticación
+──────────────────────────────────────────────
+Título: Sección protegida con invitación a autenticarse
+
+Historia:
+  Como Usuario Anónimo,
+  quiero ver una sección que me invite a registrarme o iniciar sesión
+  en lugar del formulario de escaneo,
+  para que entienda que necesito una cuenta para usar el servicio.
+
+Prioridad: Alta
+Dependencias: HU-01-01
+Reglas: RN-WS-10
+
+Criterios de Aceptación:
+  - [ ] La sección de escaneo muestra el muro de auth si authStore.isAuthenticated = false.
+  - [ ] El muro tiene dos botones: "Iniciar Sesión" y "Crear Cuenta".
+  - [ ] El muro tiene un texto descriptivo del beneficio de registrarse.
+  - [ ] Ningún campo del formulario de escaneo es visible sin autenticación.
+  - [ ] Si el usuario tiene JWT válido en localStorage al cargar la app,
+        el authStore se hidrata y el formulario se muestra directamente.
+
+──────────────────────────────────────────────
+HU-06-02: Registrarse como nuevo usuario
+──────────────────────────────────────────────
+Título: Modal de registro con email y contraseña
+
+Historia:
+  Como Usuario Anónimo,
+  quiero poder crear una cuenta con mi email y contraseña,
+  para que pueda acceder al servicio de escaneo.
+
+Prioridad: Alta
+Dependencias: HU-06-01
+Reglas: RN-WS-12, RN-WS-13, RN-WS-15
+
+Criterios de Aceptación:
+  - [ ] Al hacer clic en "Crear Cuenta", se abre un modal con campos email
+        y contraseña.
+  - [ ] Validación client-side (Zod): email válido, contraseña min 8 chars.
+  - [ ] Submit exitoso: el modal se cierra, authStore guarda el JWT,
+        el formulario de escaneo aparece.
+  - [ ] Error 409 del servidor: mensaje "Este email ya está registrado."
+  - [ ] Error de validación server-side: mensaje inline por campo.
+  - [ ] El botón "Registrarme" muestra spinner durante el request.
+  - [ ] Link "¿Ya tenés cuenta? Iniciá sesión" abre el modal de login.
+
+──────────────────────────────────────────────
+HU-06-03: Iniciar sesión con cuenta existente
+──────────────────────────────────────────────
+Título: Modal de login con email y contraseña
+
+Historia:
+  Como Usuario Anónimo con cuenta registrada,
+  quiero poder iniciar sesión con mi email y contraseña,
+  para que acceda al formulario de escaneo.
+
+Prioridad: Alta
+Dependencias: HU-06-01
+Reglas: RN-WS-14
+
+Criterios de Aceptación:
+  - [ ] Al hacer clic en "Iniciar Sesión", se abre un modal con campos
+        email y contraseña.
+  - [ ] Validación client-side (Zod): email válido, contraseña no vacía.
+  - [ ] Submit exitoso: el modal se cierra, authStore guarda el JWT,
+        el formulario de escaneo aparece.
+  - [ ] Error 401 del servidor: mensaje "Credenciales incorrectas."
+  - [ ] El botón "Ingresar" muestra spinner durante el request.
+  - [ ] Link "¿No tenés cuenta? Registrate" abre el modal de registro.
+
+──────────────────────────────────────────────
+HU-06-04: Persistir sesión entre recargas
+──────────────────────────────────────────────
+Título: Token JWT en localStorage via authStore
+
+Historia:
+  Como Usuario Evaluador,
+  quiero que mi sesión persista si recargo la página,
+  para que no tenga que iniciar sesión cada vez.
+
+Prioridad: Alta
+Dependencias: HU-06-02, HU-06-03
+Reglas: RN-WS-14
+
+Criterios de Aceptación:
+  - [ ] Al recibir un JWT, el authStore lo guarda en localStorage.
+  - [ ] Al cargar la app, si existe token en localStorage, el authStore
+        lo lee y verifica si no expiró.
+  - [ ] Si el token guardado es válido: el formulario de escaneo es visible.
+  - [ ] Si el token guardado expiró: authStore se limpia y se muestra el muro.
+  - [ ] El JWT se incluye automáticamente en cada request via interceptor Axios.
+
+──────────────────────────────────────────────
+HU-06-05: Cerrar sesión
+──────────────────────────────────────────────
+Título: Logout y limpieza de authStore
+
+Historia:
+  Como Usuario Evaluador,
+  quiero poder cerrar sesión desde la Landing Page,
+  para que mi sesión no quede activa en el browser.
+
+Prioridad: Media
+Dependencias: HU-06-04
+
+Criterios de Aceptación:
+  - [ ] Hay un botón o link "Cerrar sesión" visible cuando el usuario está
+        autenticado (ej: en el header/navbar).
+  - [ ] Al hacer clic: authStore.clearAuth() borra el token de localStorage
+        y del estado.
+  - [ ] Tras el logout: el formulario de escaneo desaparece y se muestra el
+        muro de autenticación.
+  - [ ] No se realiza ningún request al backend para el logout (solo limpieza
+        local del token).

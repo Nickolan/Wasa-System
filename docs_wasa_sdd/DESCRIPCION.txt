@@ -1,0 +1,452 @@
+================================================================================
+  WASA — Web Application Security Assessment
+  Sistema SaaS de Escaneo de Seguridad Automatizado
+  Descripción Integral del Sistema — Landing Page & FastAPI Bridge
+  Versión 1.1 | 2026-08-21 (rev: autenticación JWT)
+================================================================================
+
+ÍNDICE
+──────
+  1.  Visión General
+  2.  Problema que Resuelve
+  3.  Actores del Sistema
+  4.  Flujo Principal del Usuario
+  5.  Stack Tecnológico
+  6.  Arquitectura Comercial (Capas)
+  7.  Modelo de Datos Local del FastAPI Bridge
+  8.  Componentes Internos WASA (Contexto)
+  9.  Contrato de Integración: FastAPI ↔ n8n Webhook
+  10. Restricciones y Alcance
+  11. Variables de Entorno (Resumen)
+  12. Criterios de Calidad No Funcionales
+
+
+================================================================================
+1. VISIÓN GENERAL
+================================================================================
+
+WASA (Web Application Security Assessment) es una plataforma SaaS de seguridad
+automatizada que orquesta múltiples herramientas de análisis —OWASP ZAP,
+Nuclei, ffuf y SQLMap— para detectar vulnerabilidades en aplicaciones web
+objetivo, consolidando todos los hallazgos en un Dashboard unificado.
+
+El módulo que se documenta en este SDD es la CAPA DE PRESENTACIÓN PÚBLICA:
+una Landing Page + un microservicio puente (FastAPI) que expone el sistema
+WASA al mundo exterior, abstrayendo completamente la orquestación interna de
+n8n del usuario final.
+
+MODELO SAAS — MURO DE AUTENTICACIÓN:
+  Al ser un producto SaaS comercial, el formulario de escaneo no es de acceso
+  libre. El contenido informativo de la Landing Page (Hero, características,
+  flujo, aviso ético) es público. Sin embargo, para acceder al formulario
+  de configuración y lanzar un escaneo, el usuario DEBE estar autenticado con
+  una cuenta registrada.
+
+OBJETIVO COMERCIAL:
+  - Proteger el servicio de uso no autorizado y abuso de recursos.
+  - Permitir que solo usuarios registrados puedan iniciar escaneos.
+  - Reducir la barrera de entrada de "saber operar n8n" a "crear cuenta
+    y completar un formulario web".
+
+
+================================================================================
+2. PROBLEMA QUE RESUELVE
+================================================================================
+
+Estado previo (tesis original):
+  - El workflow de n8n se disparaba con un Schedule Trigger cada 40 minutos.
+  - El target_url y las credenciales estaban hardcodeadas en nodos de n8n.
+  - No existía interfaz pública; la operación requería acceso directo a n8n.
+  - No había control de acceso: cualquiera con acceso a n8n podía lanzar scans.
+
+Solución (este módulo):
+  - El Schedule Trigger es reemplazado por un Webhook Trigger en n8n.
+  - El FastAPI Bridge valida los parámetros, los sanitiza y dispara n8n.
+  - La Landing Page ofrece una interfaz pública clara, ética y segura.
+  - Un sistema de autenticación JWT garantiza que solo usuarios registrados
+    puedan lanzar escaneos, protegiendo los recursos del sistema.
+
+
+================================================================================
+3. ACTORES DEL SISTEMA
+================================================================================
+
+┌─────────────────────┬──────────────────────────────────────────────────────┐
+│ Actor               │ Descripción                                          │
+├─────────────────────┼──────────────────────────────────────────────────────┤
+│ Usuario Anónimo     │ Visitante no autenticado. Puede ver toda la sección  │
+│ (UA)                │ informativa de la Landing Page (Hero, Features,      │
+│                     │ HowItWorks, aviso ético). NO puede ver ni enviar el  │
+│                     │ formulario de escaneo. Ve un muro de login/registro. │
+├─────────────────────┼──────────────────────────────────────────────────────┤
+│ Usuario Evaluador   │ Profesional de seguridad o estudiante con cuenta     │
+│ (UE)                │ registrada y sesión activa (JWT válido). Puede       │
+│                     │ configurar y lanzar escaneos WASA.                  │
+│                     │ Provee: target_url, phpsessid, parámetros SQLMap.    │
+├─────────────────────┼──────────────────────────────────────────────────────┤
+│ FastAPI Bridge      │ Microservicio Python. Gestiona usuarios (SQLite),    │
+│ (FB)                │ emite JWTs, valida tokens, aplica rate limiting y    │
+│                     │ delega el escaneo al webhook de n8n.                │
+│                     │ Actor interno / sistema.                             │
+├─────────────────────┼──────────────────────────────────────────────────────┤
+│ n8n Orchestrator    │ Recibe el webhook, inyecta variables al workflow y   │
+│ (SW)                │ ejecuta ZAP, Nuclei, ffuf, SQLMap en secuencia.      │
+│                     │ Actor interno / sistema.                             │
+├─────────────────────┼──────────────────────────────────────────────────────┤
+│ Dashboard (existente│ Destino final del usuario tras el inicio exitoso del │
+│ React/Node.js)      │ escaneo. Muestra KPIs, reportes y rankings.          │
+│                     │ Sistema ya validado en tesis. No se reconstruye.     │
+└─────────────────────┴──────────────────────────────────────────────────────┘
+
+
+================================================================================
+4. FLUJO PRINCIPAL DEL USUARIO
+================================================================================
+
+PASO 1 — DESCUBRIMIENTO (Landing Page pública)
+  El usuario accede a la Landing Page. Ve las secciones informativas:
+    - Hero: nombre, tagline, CTA ("Comenzar" → scroll o modal login).
+    - Features: ZAP, Nuclei, ffuf, SQLMap — qué detecta cada herramienta.
+    - HowItWorks: flujo en 4 pasos, sin jerga técnica.
+    - Aviso ético: uso autorizado obligatorio.
+  El formulario de escaneo NO es visible aún. En su lugar, hay un muro
+  con botones "Iniciar Sesión" y "Crear Cuenta".
+
+PASO 2 — AUTENTICACIÓN (Login / Registro)
+  El Usuario Anónimo debe autenticarse:
+    OPCIÓN A — Registro:
+      - Completa modal/formulario con email y contraseña (min 8 chars).
+      - POST /api/v1/auth/register → FastAPI crea usuario en SQLite,
+        hashea la contraseña con bcrypt, emite JWT.
+      - El frontend almacena el JWT en localStorage via authStore (Zustand).
+      - El modal se cierra y el formulario de escaneo se hace visible.
+    OPCIÓN B — Login:
+      - Ingresa email y contraseña.
+      - POST /api/v1/auth/login → FastAPI verifica credenciales,
+        retorna JWT si son válidas.
+      - El frontend almacena el JWT en localStorage via authStore (Zustand).
+      - El modal se cierra y el formulario de escaneo se hace visible.
+
+PASO 3 — CONFIGURACIÓN (Formulario de Escaneo — solo autenticados)
+  El Usuario Evaluador completa el formulario:
+    - target_url       : URL del objetivo (requerido, validación de formato).
+    - phpsessid        : Cookie de sesión PHPSESSID (requerido).
+    - sqlmap_level     : Profundidad de inyección SQLMap [1-5] (default: 1).
+    - sqlmap_risk      : Nivel de riesgo SQLMap [1-3] (default: 1).
+    - checkbox ético   : Declaración de autorización (requerido).
+
+PASO 4 — DISPARO (POST al FastAPI Bridge — Bearer JWT)
+  Al hacer clic en "Escanear", el frontend envía:
+    POST https://<fastapi-host>/api/v1/scan/start
+    Authorization: Bearer <jwt_token>
+    Content-Type: application/json
+    Body: { "target_url": "...", "phpsessid": "...",
+            "sqlmap_level": 1, "sqlmap_risk": 1 }
+
+PASO 5 — ORQUESTACIÓN (FastAPI → n8n Webhook)
+  El FastAPI Bridge:
+    a. Verifica el JWT del header Authorization → 401 si inválido/expirado.
+    b. Valida el cuerpo con Pydantic v2.
+    c. Verifica rate limit (10 escaneos / IP / 60 minutos).
+    d. Construye el payload para n8n.
+    e. Realiza POST al Webhook Trigger de n8n.
+    f. Devuelve 202 Accepted al frontend con un scan_id.
+
+PASO 6 — REDIRECCIÓN (Dashboard existente)
+  El frontend recibe el 202 Accepted y redirige al usuario al Dashboard
+  React/Node.js ya desplegado, donde podrá ver el progreso y resultados
+  del escaneo (polling al Node.js/Express API existente).
+
+
+================================================================================
+5. STACK TECNOLÓGICO
+================================================================================
+
+┌──────────────────────┬─────────────────────────────┬──────────────────────┐
+│ Capa                 │ Tecnología                  │ Rol                  │
+├──────────────────────┼─────────────────────────────┼──────────────────────┤
+│ Frontend (Landing)   │ React 18 + Vite + TypeScript│ UI pública           │
+│                      │ Tailwind CSS v3             │ Estilos              │
+│                      │ React Hook Form + Zod       │ Validación de forms  │
+│                      │ Axios                       │ HTTP client          │
+│                      │ Zustand                     │ Auth state global    │
+├──────────────────────┼─────────────────────────────┼──────────────────────┤
+│ Backend Bridge       │ Python 3.11+                │ Lenguaje             │
+│                      │ FastAPI 0.111+              │ Framework web        │
+│                      │ Pydantic v2                 │ Validación/schemas   │
+│                      │ python-jose + cryptography  │ JWT: crear/verificar │
+│                      │ passlib[bcrypt]             │ Hash de contraseñas  │
+│                      │ SQLAlchemy 2.x (async)      │ ORM                  │
+│                      │ aiosqlite                   │ Driver SQLite async  │
+│                      │ httpx (async)               │ Cliente HTTP a n8n   │
+│                      │ slowapi                     │ Rate limiting        │
+│                      │ Uvicorn                     │ ASGI server          │
+├──────────────────────┼─────────────────────────────┼──────────────────────┤
+│ DB Local (Bridge)    │ SQLite                      │ Usuarios del servicio│
+│                      │ Archivo: users.db           │ Solo tabla `users`   │
+├──────────────────────┼─────────────────────────────┼──────────────────────┤
+│ Orquestación         │ n8n (self-hosted)           │ Workflow engine      │
+│                      │ Webhook Trigger node        │ Punto de entrada     │
+├──────────────────────┼─────────────────────────────┼──────────────────────┤
+│ Message Broker       │ Redis / Memurai             │ Cola FIFO            │
+│                      │ Queue: sqlmap_tasks         │ BLPOP async          │
+├──────────────────────┼─────────────────────────────┼──────────────────────┤
+│ Herramientas Scan    │ OWASP ZAP                   │ Spider + Active Scan │
+│                      │ Nuclei                      │ CVE / misconfig      │
+│                      │ ffuf                        │ Directory fuzzing    │
+│                      │ SQLMap (Python Worker)      │ SQL injection        │
+├──────────────────────┼─────────────────────────────┼──────────────────────┤
+│ Persistencia         │ PostgreSQL (db_fuzzing)     │ Resultados de scans  │
+│                      │ Tabla: scans                │ Metadata escaneo     │
+│                      │ Tabla: vulnerabilities      │ Hallazgos            │
+├──────────────────────┼─────────────────────────────┼──────────────────────┤
+│ Dashboard (existente)│ React + Node.js/Express     │ Visualización        │
+│                      │ (ya validado en tesis)      │ No se modifica       │
+└──────────────────────┴─────────────────────────────┴──────────────────────┘
+
+
+================================================================================
+6. ARQUITECTURA COMERCIAL (CAPAS)
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────┐
+  │              CAPA 0: PRESENTACIÓN PÚBLICA               │
+  │  React Landing Page (Vite + Tailwind + FSD)             │
+  │  Público:    Hero, Features, HowItWorks, Footer         │
+  │  Protegido:  ScanFormWidget (oculto sin JWT válido)     │
+  │  Estado:     authStore Zustand → JWT en localStorage    │
+  └───────────────────────┬─────────────────────────────────┘
+                          │ POST /api/v1/auth/register
+                          │ POST /api/v1/auth/login
+                          │ POST /api/v1/scan/start  (Bearer JWT)
+                          ▼
+  ┌───────────────────────────────────────────────────────────┐
+  │              CAPA 1: PUENTE / API BRIDGE                  │
+  │  FastAPI Microservice (Python)                            │
+  │  ─── Dominio Auth ───────────────────────────────────    │
+  │  AuthRouter → AuthService (bcrypt + JWT) → UserRepo      │
+  │  ─── Dominio Scan ───────────────────────────────────    │
+  │  ScanRouter (JWT protected) → ScanService → UoW → N8nRepo│
+  │  ─── Infraestructura ────────────────────────────────    │
+  │  CORS + Rate Limiting + RFC 7807 + Pydantic BaseSettings  │
+  └────────────┬──────────────────────┬──────────────────────┘
+               │ SQLAlchemy async     │ POST <n8n-webhook-url>
+               ▼                      ▼
+  ┌──────────────────────┐  ┌──────────────────────────────┐
+  │  SQLite (local)      │  │   CAPA 2: ORQUESTACIÓN       │
+  │  fastapi_bridge/     │  │   n8n Workflow               │
+  │  users.db            │  │   Webhook Trigger            │
+  │  Tabla: users        │  │   → ZAP → Nuclei → ffuf      │
+  └──────────────────────┘  │   → LPUSH sqlmap_tasks       │
+                            └──────────┬───────────────────┘
+                                       │
+                        ┌──────────────┴──────────────┐
+                        │ BLPOP                        │ INSERT
+                        ▼                             ▼
+             ┌──────────────────────┐  ┌──────────────────────────┐
+             │  CAPA 3: EJECUCIÓN   │  │   CAPA 4: PERSISTENCIA   │
+             │  Python SQLMap       │  │   PostgreSQL db_fuzzing   │
+             │  Worker              │──│   scans + vulns          │
+             └──────────────────────┘  └──────────────┬───────────┘
+                                                      │ SELECT
+                                                      ▼
+  ┌─────────────────────────────────────────────────────────┐
+  │              CAPA 5: PRESENTACIÓN INTERNA               │
+  │  Dashboard React/Node.js (existente, validado en tesis) │
+  │  Panel General → Reporte Detallado → Endpoints Vuln.   │
+  └─────────────────────────────────────────────────────────┘
+
+
+================================================================================
+7. MODELO DE DATOS LOCAL DEL FASTAPI BRIDGE
+================================================================================
+
+El FastAPI Bridge mantiene su PROPIA base de datos SQLite local (users.db).
+Esta base de datos es independiente del PostgreSQL db_fuzzing del sistema WASA.
+Su único propósito es gestionar las cuentas de usuario del servicio SaaS.
+
+TABLA: users
+  ┌───────────────────┬──────────────────┬────────────────────────────────────┐
+  │ Columna           │ Tipo             │ Descripción                        │
+  ├───────────────────┼──────────────────┼────────────────────────────────────┤
+  │ id                │ INTEGER PK AUTO  │ Identificador de usuario.          │
+  │ email             │ TEXT UNIQUE NN   │ Email del usuario. Único.          │
+  │ hashed_password   │ TEXT NOT NULL    │ Hash bcrypt de la contraseña.      │
+  │ created_at        │ TIMESTAMP DEFAULT│ Fecha de registro.                 │
+  │                   │ CURRENT_TIMESTAMP│                                    │
+  └───────────────────┴──────────────────┴────────────────────────────────────┘
+
+NOTAS:
+  - El password en texto plano NUNCA se persiste.
+  - El email se almacena en lowercase (normalizado al registrar).
+  - Las migraciones se manejan via SQLAlchemy create_all al startup.
+  - Esta tabla NO se relaciona con PostgreSQL db_fuzzing.
+
+
+================================================================================
+8. COMPONENTES INTERNOS WASA (CONTEXTO — NO SE MODIFICAN)
+================================================================================
+
+Los siguientes componentes existen y están validados en la tesis original.
+El módulo Landing + FastAPI se integra con ellos pero NO los modifica.
+
+  n8n Workflow:
+    - 22 nodos, organizados en pipeline secuencial.
+    - CAMBIO: el nodo Schedule Trigger (40min) es reemplazado por
+      Webhook Trigger que recibe el payload del FastAPI Bridge.
+    - Variables que el webhook inyecta al workflow:
+        $json.target_url, $json.phpsessid,
+        $json.sqlmap_level, $json.sqlmap_risk, $json.scan_id
+
+  Redis / Memurai:
+    - Cola: sqlmap_tasks
+    - Operación de push: LPUSH (desde n8n)
+    - Operación de consumo: BLPOP (desde Python Worker)
+    - Payload en cola: { urls, scan_id, cookie, level, risk }
+
+  Python SQLMap Worker (worker_sqlmap.py):
+    - Consume cola Redis por BLPOP bloqueante.
+    - Ejecuta sqlmap.py como subprocess (timeout: 600s).
+    - INSERT directo a PostgreSQL tabla vulnerabilities.
+
+  PostgreSQL db_fuzzing:
+    - scans(id, target_url, scan_date, zap_count, nuclei_count,
+            ffuf_count, sqlmap_count)
+    - vulnerabilities(id, scan_id, source, type, severity, url,
+                      description, solution, cweid, evidence)
+
+  Dashboard React/Node.js:
+    - 3 vistas: Panel General (KPIs + gráficos), Reporte Detallado,
+      Endpoints Vulnerables (ranking).
+    - Servido por Node.js/Express que consulta PostgreSQL.
+    - URL de redirección destino tras escaneo iniciado.
+
+
+================================================================================
+9. CONTRATO DE INTEGRACIÓN: FastAPI ↔ n8n WEBHOOK
+================================================================================
+
+REQUEST (Frontend → FastAPI — REQUIERE JWT):
+  POST /api/v1/scan/start
+  Authorization: Bearer <access_token>
+  Content-Type: application/json
+  {
+    "target_url"     : "http://objetivo.com",
+    "phpsessid"      : "abc123xyz",
+    "sqlmap_level"   : 1,
+    "sqlmap_risk"    : 1
+  }
+
+RESPONSE (FastAPI → Frontend):
+  202 Accepted
+  {
+    "scan_id"   : "uuid-v4",
+    "status"    : "queued",
+    "message"   : "Escaneo iniciado correctamente. Redirigiendo al Dashboard."
+  }
+
+PAYLOAD (FastAPI → n8n Webhook Trigger):
+  POST <N8N_WEBHOOK_URL>
+  X-WASA-TOKEN: <token>
+  {
+    "target_url"     : "http://objetivo.com",
+    "phpsessid"      : "abc123xyz",
+    "sqlmap_level"   : 1,
+    "sqlmap_risk"    : 1,
+    "scan_id"        : "uuid-v4"
+  }
+
+ERRORES (FastAPI → Frontend, formato RFC 7807):
+  400 Bad Request   → Validación Pydantic fallida (URL malformada, etc.)
+  401 Unauthorized  → JWT ausente, inválido o expirado
+  409 Conflict      → Email ya registrado (solo en /auth/register)
+  422 Unprocessable → Campos requeridos faltantes
+  429 Too Many Req. → Rate limit excedido (10 / IP / 60min)
+  502 Bad Gateway   → n8n no respondió o retornó error
+  500 Internal Err. → Error inesperado del servidor
+
+
+================================================================================
+10. RESTRICCIONES Y ALCANCE
+================================================================================
+
+DENTRO DEL ALCANCE (este SDD):
+  - Landing Page React (FSD): secciones públicas + muro de auth + scan form.
+  - FastAPI Bridge: autenticación JWT (register/login), tabla users (SQLite),
+    validación Pydantic, rate limiting, forwarding a n8n webhook.
+  - authStore Zustand: estado global de autenticación en el frontend.
+  - Modales de Login y Registro en el frontend.
+  - Protección del endpoint /scan/start con JWT Bearer.
+  - Variables de entorno para URLs, secretos y configuración.
+
+FUERA DEL ALCANCE (componentes existentes, no se tocan):
+  - Workflow interno de n8n (solo se agrega el nodo Webhook Trigger).
+  - Python SQLMap Worker.
+  - Redis / Memurai.
+  - PostgreSQL db_fuzzing (DDL, tablas, datos).
+  - Node.js/Express API del Dashboard.
+  - React Dashboard (Panel General, Reporte, Endpoints).
+
+RESTRICCIONES ÉTICAS Y LEGALES:
+  - El formulario incluye checkbox de declaración ética obligatorio.
+  - El FastAPI Bridge no ejecuta herramientas de seguridad directamente;
+    delega 100% a n8n.
+  - La Landing Page incluye aviso explícito de uso autorizado.
+
+RESTRICCIONES DE SEGURIDAD:
+  - Las contraseñas nunca se almacenan en texto plano.
+  - Los JWT tienen tiempo de expiración configurable (default: 24 horas).
+  - El secreto JWT (JWT_SECRET) vive exclusivamente en variables de entorno.
+  - El endpoint /scan/start rechaza cualquier request sin JWT válido.
+
+
+================================================================================
+11. VARIABLES DE ENTORNO (RESUMEN)
+================================================================================
+
+FastAPI Bridge (.env):
+  N8N_WEBHOOK_URL       URL completa del Webhook Trigger en n8n
+  N8N_WEBHOOK_TOKEN     Token secreto para autenticar el request a n8n
+  JWT_SECRET            Clave secreta para firmar y verificar JWT
+  TOKEN_EXPIRE_HOURS    Tiempo de vida del JWT en horas (default: 24)
+  DB_URL                URL de conexión SQLite (ej: sqlite+aiosqlite:///./users.db)
+  CORS_ORIGINS          Lista de orígenes permitidos (Landing Page URL)
+  RATE_LIMIT_REQUESTS   Requests permitidos por ventana (default: 10)
+  RATE_LIMIT_WINDOW     Ventana en segundos (default: 3600)
+  APP_ENV               development | production
+
+React Landing Page (.env):
+  VITE_API_BASE_URL     URL base del FastAPI Bridge
+  VITE_DASHBOARD_URL    URL del Dashboard React/Node.js existente
+
+
+================================================================================
+12. CRITERIOS DE CALIDAD NO FUNCIONALES
+================================================================================
+
+  Autenticación:
+    - Los JWT se firman con algoritmo HS256 usando JWT_SECRET.
+    - El tiempo de expiración del token es configurable (default: 24h).
+    - Las contraseñas se hashean con bcrypt (passlib, rounds=12).
+    - El endpoint /scan/start responde 401 si el JWT está ausente,
+      malformado o expirado.
+    - El email se valida con EmailStr (Pydantic v2) al registrar.
+    - Un email ya registrado devuelve 409 Conflict, no 500.
+
+  Scan:
+    - Tiempo de respuesta FastAPI (auth + forward) < 3 segundos.
+    - Rate limiting: 10 solicitudes por IP por ventana de 60 minutos.
+    - El Bridge no espera resultado del escaneo (fire-and-forward).
+
+  Seguridad General:
+    - CORS: solo orígenes configurados en CORS_ORIGINS.
+    - El JWT_SECRET y N8N_WEBHOOK_TOKEN nunca se exponen en logs.
+    - Los errores en producción no exponen stack traces.
+    - Todos los errores siguen formato RFC 7807.
+
+  Frontend:
+    - La Landing Page es responsive (mobile-first, Tailwind breakpoints).
+    - El formulario de escaneo es invisible para usuarios no autenticados.
+    - El token JWT persiste en localStorage entre recargas de página.
+    - Si el JWT expira, el authStore limpia la sesión y muestra el muro.
+    - Los formularios de Login/Registro tienen validación client-side (Zod).
