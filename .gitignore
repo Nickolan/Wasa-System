@@ -11,3 +11,5 @@ fastapi_bridge/.venv/
 
 node_modules/
 dist/
+*.local
+npm-debug.log*

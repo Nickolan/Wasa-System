@@ -206,16 +206,20 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-00b] `react-landing-scaffold`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-01-01, HU-06-01
 - **Scope**:
-  - `npm create vite@latest wasa-landing -- --template react-ts`
-  - Instalar: tailwindcss, postcss, autoprefixer, react-hook-form, zod,
-    @hookform/resolvers, axios, zustand
-  - Configurar Tailwind (`tailwind.config.ts`, `postcss.config.ts`, `index.css`)
+  - `npm create vite@latest wasa-landing -- --template react-ts` (React 19.x, Vite 8.x, TS ~6.0.x —
+    lo que scaffoldea el comando al momento de implementar, sin downgrade a versiones fijas;
+    ver `knowledge-base/02_descripcion_general.md` y D-2 en `openspec/changes/react-landing-scaffold/design.md`)
+  - Instalar: tailwindcss@^4, @tailwindcss/vite@^4, react-hook-form, zod,
+    @hookform/resolvers, axios, zustand (sin postcss ni autoprefixer — Tailwind 4 no los usa)
+  - Configurar Tailwind 4 (plugin `@tailwindcss/vite` en `vite.config.ts`, `@import "tailwindcss";`
+    en `src/app/index.css` — sin `tailwind.config.ts` ni `postcss.config.*`)
   - Estructura FSD: `src/app/stores/`, `src/pages/`, `src/widgets/`, `src/features/`,
     `src/entities/`, `src/shared/`
-  - Path aliases en `vite.config.ts` y `tsconfig.json`
+  - Path aliases en `vite.config.ts` y `tsconfig.app.json` (no en `tsconfig.json` raíz, que en el
+    template de Vite es solo de `references`)
   - `src/app/App.tsx` renderiza `<LandingPage />` placeholder
 - **Dependencias**: ninguna
 - **Duración estimada**: 1 hora
@@ -225,12 +229,12 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/02_descripcion_general.md` §Stack
   - `knowledge-base/01_vision_y_objetivos.md`
 - **Criterios de Aceptación**:
-  - [ ] `npm run dev` arranca sin errores en puerto 5173.
-  - [ ] `npm run build` genera build sin errores TypeScript.
-  - [ ] La estructura de carpetas FSD (incluyendo `app/stores/`) existe.
-  - [ ] Zustand instalado y verificado (importación sin error).
-  - [ ] Tailwind CSS funciona en un componente de prueba.
-  - [ ] Los path aliases funcionan.
+  - [x] `npm run dev` arranca sin errores en puerto 5173.
+  - [x] `npm run build` genera build sin errores TypeScript.
+  - [x] La estructura de carpetas FSD (incluyendo `app/stores/`) existe.
+  - [x] Zustand instalado y verificado (importación sin error).
+  - [x] Tailwind CSS funciona en un componente de prueba.
+  - [x] Los path aliases funcionan.
 
 ---
 

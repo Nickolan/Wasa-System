@@ -4,8 +4,8 @@
 
 | Capa | Tecnologías | Versión mínima |
 |---|---|---|
-| Frontend — Landing | React + TypeScript + Vite | React 18.x, TS 5.x, Vite 5.x |
-| Frontend — estilos/forms | Tailwind CSS, React Hook Form, Zod | 3.x / 7.x / 3.x |
+| Frontend — Landing | React + TypeScript + Vite | React 19.x, TS 5.9.x, Vite 7.x |
+| Frontend — estilos/forms | Tailwind CSS, React Hook Form, Zod | 4.x / 7.x / 3.x |
 | Frontend — HTTP/estado | Axios, Zustand | 1.x / 4.x |
 | Backend — Bridge | Python + FastAPI | Python 3.11+, FastAPI 0.111+ |
 | Backend — validación | Pydantic v2 | 2.x |
@@ -18,6 +18,12 @@
 | Persistencia (existente, compartida) | PostgreSQL `db_fuzzing` | — |
 | Dashboard (existente) | React + Node.js/Express | ya validado en tesis, no se modifica |
 | Herramientas de escaneo (existente) | OWASP ZAP, Nuclei, ffuf, SQLMap | — |
+
+> **Nota de versionado del frontend (decisión del usuario, CHANGE-00b).** El stack de la Landing sigue lo que
+> `npm create vite@latest -- --template react-ts` scaffoldea hoy (React 19 / Vite 7 / TS 5.9) y Tailwind CSS 4.
+> No se hace downgrade a React 18 / Vite 5 / Tailwind 3. Consecuencia práctica: Tailwind 4 se configura con el
+> plugin `@tailwindcss/vite` + `@import "tailwindcss"` en el CSS y tokens bajo `@theme`; **no** hay
+> `tailwind.config.ts`, `postcss.config.*` ni `autoprefixer`. Ver `openspec/changes/react-landing-scaffold/design.md` (D-2).
 
 ## Arquitectura general
 
