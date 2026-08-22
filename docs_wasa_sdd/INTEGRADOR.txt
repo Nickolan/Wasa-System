@@ -1,8 +1,8 @@
 ================================================================================
   WASA — Web Application Security Assessment
   Landing Page & FastAPI Bridge
-  Especificación Técnica Integradora (SDD) — v1.1 | 2026-08-21
-  (rev: autenticación JWT + SQLite users)
+  Especificación Técnica Integradora (SDD) — v1.2 | 2026-08-21
+  (rev: autenticación JWT + tabla users en PostgreSQL db_fuzzing)
 ================================================================================
 
 Proyecto     : WASA Landing Page & FastAPI Bridge
@@ -52,19 +52,17 @@ TABLA DE OBJETIVOS
 │                      │ python-jose[cryptography]│ 3.x      │ JWT sign/verify│
 │                      │ passlib[bcrypt]         │ 1.x       │ Hash passwords│
 │                      │ SQLAlchemy (async)      │ 2.x       │ ORM           │
-│                      │ aiosqlite               │ 0.19+     │ SQLite driver │
+│                      │ asyncpg                 │ 0.29+     │ Driver PostgreSQL│
 │                      │ httpx                   │ 0.27+     │ HTTP async    │
 │                      │ slowapi                 │ 0.1.x     │ Rate limiting │
 │                      │ Uvicorn                 │ 0.29+     │ ASGI server   │
-├──────────────────────┼─────────────────────────┼───────────┼───────────────┤
-│ DB Local (Bridge)    │ SQLite                  │ —         │ Usuarios SaaS │
-│                      │ Archivo: users.db       │ —         │ Tabla: users  │
 ├──────────────────────┼─────────────────────────┼───────────┼───────────────┤
 │ Orquestación         │ n8n (self-hosted)       │ latest    │ Workflow      │
 │                      │ Webhook Trigger node    │ —         │ Entry point   │
 ├──────────────────────┼─────────────────────────┼───────────┼───────────────┤
 │ Infra (existente)    │ Redis / Memurai         │ —         │ Cola FIFO     │
-│                      │ PostgreSQL (db_fuzzing) │ —         │ Scan results  │
+│                      │ PostgreSQL (db_fuzzing) │ —         │ Scan results +│
+│                      │                         │           │ users (nueva) │
 │                      │ Node.js/Express         │ —         │ Dashboard API │
 └──────────────────────┴─────────────────────────┴───────────┴───────────────┘
 
@@ -102,32 +100,34 @@ TABLA DE OBJETIVOS
   │  FastAPI Microservice (Python)                           │
   │  Puerto: 8000                                            │
   │  ─── Dominio: Auth ──────────────────────────────────── │
-  │  AuthRouter → AuthService → UserRepository → SQLite      │
+  │  AuthRouter → AuthService → UserRepository → PostgreSQL  │
   │  ─── Dominio: Scan (protected) ─────────────────────── │
   │  ScanRouter (JWT dep) → ScanService → UoW → N8nRepo     │
   │  ─── Infraestructura ───────────────────────────────── │
   │  CORS + RateLimit + RFC7807 handlers + BaseSettings      │
   └────────────┬──────────────────────┬──────────────────────┘
                │ SQLAlchemy async     │ httpx POST
-               ▼                      ▼
-  ┌────────────────────┐   ┌──────────────────────────────────┐
-  │  SQLite (local)    │   │  CAPA ORQUESTACIÓN               │
-  │  users.db          │   │  n8n Workflow                    │
-  │  Tabla: users      │   │  Webhook Trigger (reemplaza      │
-  └────────────────────┘   │  Schedule Trigger)               │
-                           │  → ZAP → Nuclei → ffuf           │
-                           │  → LPUSH sqlmap_tasks (Redis)    │
-                           └──────────┬───────────────────────┘
-                                      │
-                      ┌───────────────┴──────────────┐
-                      │ BLPOP                         │ INSERT
-                      ▼                              ▼
-           ┌──────────────────────┐  ┌──────────────────────────────┐
-           │ Python SQLMap Worker │  │ PostgreSQL db_fuzzing         │
-           │ (existente)          │──│ scans + vulnerabilities       │
-           └──────────────────────┘  └──────────────┬───────────────┘
-                                                    │ SELECT (REST)
-                                                    ▼
+               │ (asyncpg)            ▼
+               │           ┌──────────────────────────────────┐
+               │           │  CAPA ORQUESTACIÓN               │
+               │           │  n8n Workflow                    │
+               │           │  Webhook Trigger (reemplaza      │
+               │           │  Schedule Trigger)               │
+               │           │  → ZAP → Nuclei → ffuf           │
+               │           │  → LPUSH sqlmap_tasks (Redis)    │
+               │           └──────────┬───────────────────────┘
+               │                      │
+               │      ┌───────────────┴──────────────┐
+               │      │ BLPOP                         │ INSERT
+               │      ▼                              ▼
+               │  ┌──────────────────────┐  ┌──────────────────────────────┐
+               │  │ Python SQLMap Worker │  │ PostgreSQL db_fuzzing         │
+               │  │ (existente)          │──│ scans + vulnerabilities +     │
+               │  └──────────────────────┘  │ users (nueva, vía Bridge)     │
+               │                            └──────────────┬───────────────┘
+               └───────────────────────────────────────────┘
+                                                            │ SELECT (REST)
+                                                            ▼
   ┌─────────────────────────────────────────────────────────┐
   │  CAPA PRESENTACIÓN INTERNA (existente — no se modifica) │
   │  Dashboard React / Node.js Express                      │
@@ -283,7 +283,9 @@ MÓDULOS FSD — TABLA DETALLADA (nuevos y actualizados):
 DESCRIPCIÓN:
   El FastAPI Bridge tiene DOS dominios bien separados: Auth y Scan.
   Ambos siguen la misma arquitectura de 5 capas. El dominio Auth agrega
-  una base de datos SQLite local (independiente de PostgreSQL db_fuzzing).
+  una tabla nueva (`users`) a la misma instancia PostgreSQL db_fuzzing que
+  ya usa el sistema WASA para persistir resultados de escaneo. No se crea
+  ni se mantiene un motor de base de datos separado.
 
 DOMINIO AUTH:
 ┌───────────────┬────────────────────────────┬───────────────────┬───────────┐
@@ -301,7 +303,8 @@ DOMINIO AUTH:
 │               │                            │ SQLAlchemy.       │           │
 ├───────────────┼────────────────────────────┼───────────────────┼───────────┤
 │ Repository    │ repositories/              │ CRUD sobre tabla  │ SQLAlchemy│
-│               │ user_repository.py         │ users (SQLite).   │ Settings  │
+│               │ user_repository.py         │ users (PostgreSQL │ Settings  │
+│               │                            │ db_fuzzing).      │           │
 │               │                            │ get_by_email,     │           │
 │               │                            │ create.           │           │
 ├───────────────┼────────────────────────────┼───────────────────┼───────────┤
@@ -371,7 +374,7 @@ ESTRUCTURA DE DIRECTORIOS — FASTAPI BRIDGE (actualizada):
   │   ├── auth_unit_of_work.py      — context manager SQLAlchemy session
   │   └── scan_unit_of_work.py      — context manager httpx client
   ├── repositories/
-  │   ├── user_repository.py        — get_by_email, create (SQLite)
+  │   ├── user_repository.py        — get_by_email, create (PostgreSQL)
   │   └── n8n_repository.py         — forward_scan (httpx)
   ├── schemas/
   │   ├── auth_schemas.py           — UserRegister, UserLogin, TokenResponse
@@ -616,7 +619,7 @@ VARIABLES DOWNSTREAM EN n8n (acceso via $json):
   4.  POST /api/v1/auth/register → AuthRouter → AuthService:
       a. Verifica email no duplicado (UserRepository.get_by_email).
       b. Hashea password con bcrypt.
-      c. UserRepository.create → INSERT en SQLite users.db.
+      c. UserRepository.create → INSERT en tabla users (PostgreSQL db_fuzzing).
       d. AuthService.create_access_token → JWT firmado.
   5.  FastAPI retorna 201 + TokenResponse.
   6.  Frontend: authStore.login(token, email) → guarda en localStorage.
@@ -652,7 +655,7 @@ FASTAPI BRIDGE — .env:
   │ N8N_WEBHOOK_TOKEN    │ Token secreto para autenticar request a n8n.     │
   │ JWT_SECRET           │ Clave secreta para firmar/verificar JWT (HS256). │
   │ TOKEN_EXPIRE_HOURS   │ Tiempo de vida del JWT en horas. Default: 24.    │
-  │ DB_URL               │ sqlite+aiosqlite:///./users.db                   │
+  │ DB_URL               │ postgresql+asyncpg://user:pass@host:5432/db_fuzzing│
   │ CORS_ORIGINS         │ Orígenes permitidos (Landing Page URL).          │
   │ RATE_LIMIT_REQUESTS  │ Max requests por ventana. Default: 10.           │
   │ RATE_LIMIT_WINDOW    │ Ventana en segundos. Default: 3600.              │
@@ -672,19 +675,22 @@ REACT LANDING PAGE — .env:
 10. MODELO DE DATOS
 ================================================================================
 
-BASE DE DATOS LOCAL (FastAPI Bridge — SQLite users.db):
-  TABLA: users
+BASE DE DATOS ÚNICA (PostgreSQL db_fuzzing — compartida con el sistema WASA):
+  El FastAPI Bridge se conecta a la MISMA instancia PostgreSQL que ya usa
+  n8n/Worker para persistir escaneos. Agrega la tabla `users`; NO modifica
+  el esquema, los datos ni el DDL de `scans` y `vulnerabilities`.
+
+  TABLA: users (NUEVA — agregada por el FastAPI Bridge)
   ┌──────────────────┬──────────────────┬────────────────────────────────────┐
   │ Columna          │ Tipo             │ Descripción                        │
   ├──────────────────┼──────────────────┼────────────────────────────────────┤
-  │ id               │ INTEGER PK AUTO  │ Identificador de usuario.          │
+  │ id               │ SERIAL PK        │ Identificador de usuario.          │
   │ email            │ TEXT UNIQUE NN   │ Email único. Normalizado lowercase. │
   │ hashed_password  │ TEXT NOT NULL    │ Hash bcrypt. Nunca texto plano.     │
   │ created_at       │ TIMESTAMP        │ Fecha de registro.                 │
   └──────────────────┴──────────────────┴────────────────────────────────────┘
 
-BASE DE DATOS WASA (PostgreSQL db_fuzzing — SOLO REFERENCIA, no modificada):
-  TABLA: scans
+  TABLA: scans (EXISTENTE — solo referencia, no modificada)
   ┌──────────────┬─────────────┬────────────────────────────────────────────┐
   │ Columna      │ Tipo        │ Descripción                                │
   ├──────────────┼─────────────┼────────────────────────────────────────────┤

@@ -154,7 +154,7 @@ Los siguientes componentes **NO SE MODIFICAN**. Solo se integran:
 | n8n Workflow        | Se agrega Webhook Trigger. El resto del workflow no cambia.   |
 | Redis / Memurai     | No se toca. El LPUSH lo sigue haciendo n8n.                   |
 | Python SQLMap Worker| No se toca. Consume Redis igual que antes.                    |
-| PostgreSQL          | No se toca desde el Bridge. Solo n8n y Worker escriben.       |
+| PostgreSQL (`db_fuzzing`) | El Bridge SÍ escribe: agrega y usa la tabla `users` en la misma instancia. NO toca `scans` ni `vulnerabilities` (esas las escriben n8n/Worker). |
 | Dashboard React     | Es el destino de redirección. No se modifica.                 |
 
 ---

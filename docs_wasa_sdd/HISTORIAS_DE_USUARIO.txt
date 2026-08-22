@@ -28,8 +28,9 @@ A. ACTORES
 │                     │ configurar y lanzar escaneos. Posee autorización     │
 │                     │ para escanear el sistema objetivo.                  │
 ├─────────────────────┼──────────────────────────────────────────────────────┤
-│ FastAPI Bridge      │ Microservicio Python que gestiona usuarios (SQLite), │
-│ (FB)                │ emite JWTs, verifica tokens y delega escaneos a n8n. │
+│ FastAPI Bridge      │ Microservicio Python que gestiona usuarios (tabla    │
+│ (FB)                │ users en PostgreSQL db_fuzzing), emite JWTs, verifica│
+│                     │ tokens y delega escaneos a n8n.                     │
 ├─────────────────────┼──────────────────────────────────────────────────────┤
 │ Sistema WASA        │ Conjunto de componentes internos: n8n, ZAP, Nuclei,  │
 │ (SW)                │ ffuf, SQLMap Worker, Redis, PostgreSQL, Dashboard.   │
@@ -311,8 +312,9 @@ EPIC-03: FASTAPI BRIDGE — AUTH + VALIDACIÓN + FORWARDING
 ────────────────────────────────────────────────────────────────────────────────
 
 Descripción:
-  El microservicio FastAPI. Gestiona usuarios (SQLite), emite JWT, protege
-  endpoints con Bearer auth, valida, aplica rate limiting y delega a n8n.
+  El microservicio FastAPI. Gestiona usuarios (tabla users en PostgreSQL
+  db_fuzzing), emite JWT, protege endpoints con Bearer auth, valida, aplica
+  rate limiting y delega a n8n.
 
 ──────────────────────────────────────────────
 HU-03-01: Registrar un nuevo usuario
@@ -331,7 +333,8 @@ Dependencias: Ninguna (backend puro)
 Reglas: RN-WS-12, RN-WS-13, RN-WS-15
 
 Criterios de Aceptación:
-  - [ ] Request válido con email+password: crea usuario en SQLite, retorna 201
+  - [ ] Request válido con email+password: crea usuario en PostgreSQL
+        (tabla users de db_fuzzing), retorna 201
         con TokenResponse (access_token, token_type, expires_in).
   - [ ] Email ya existente retorna 409 Conflict (RFC 7807).
   - [ ] Email inválido retorna 400 (Pydantic EmailStr).

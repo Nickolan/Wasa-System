@@ -1,0 +1,134 @@
+{
+  "scans": [
+    {
+      "id": 101,
+      "target_url": "http://localhost:8080",
+      "scan_date": "2026-03-01T10:00:00Z",
+      "total_vulnerabilities": 15,
+      "critical_count": 2,
+      "high_count": 5,
+      "medium_count": 6,
+      "low_count": 2,
+      "report_path": "/reports/scan_101.md"
+    },
+    {
+      "id": 102,
+      "target_url": "http://api.tienda-local.com",
+      "scan_date": "2026-03-05T10:00:00Z",
+      "total_vulnerabilities": 8,
+      "critical_count": 0,
+      "high_count": 2,
+      "medium_count": 4,
+      "low_count": 2,
+      "report_path": "/reports/scan_102.md"
+    },
+    {
+      "id": 103,
+      "target_url": "http://localhost:8080",
+      "scan_date": "2026-03-10T10:00:00Z",
+      "total_vulnerabilities": 10,
+      "critical_count": 1,
+      "high_count": 3,
+      "medium_count": 4,
+      "low_count": 2,
+      "report_path": "/reports/scan_103.md"
+    },
+    {
+      "id": 104,
+      "target_url": "http://localhost:8080",
+      "scan_date": "2026-03-20T10:00:00Z",
+      "total_vulnerabilities": 5,
+      "critical_count": 0,
+      "high_count": 1,
+      "medium_count": 3,
+      "low_count": 1,
+      "report_path": "/reports/scan_104.md"
+    }
+  ],
+  "vulnerabilities": [
+    {
+      "id": 902,
+      "scan_id": 104,
+      "source": "SQLMap",
+      "type": "SQL Injection (Boolean-Based Blind)",
+      "severity": "Critical",
+      "cvss_score": 9.8,
+      "owasp_category": "A03:2021-Injection",
+      "url": "http://localhost:8080/vulnerabilities/sqli/?id=1",
+      "description": "El parámetro 'id' es vulnerable a inyección SQL. El atacante puede extraer la base de datos completa.",
+      "solution": "Utilizar consultas parametrizadas (Prepared Statements) en el backend.",
+      "cweid": 89,
+      "evidence": "Payload: id=1' OR '1'='1"
+    },
+    {
+      "id": 903,
+      "scan_id": 104,
+      "source": "ZAP",
+      "type": "Command Injection",
+      "severity": "Critical",
+      "cvss_score": 9.0,
+      "owasp_category": "A03:2021-Injection",
+      "url": "http://localhost:8080/vulnerabilities/exec/",
+      "description": "Posible ejecución remota de comandos OS a través del parámetro de entrada.",
+      "solution": "Validar estrictamente la entrada con expresiones regulares. No usar funciones como shell_exec().",
+      "cweid": 78,
+      "evidence": "Payload: 127.0.0.1; whoami"
+    },
+    {
+      "id": 904,
+      "scan_id": 104,
+      "source": "ZAP",
+      "type": "Reflected Cross-Site Scripting (XSS)",
+      "severity": "High",
+      "cvss_score": 7.1,
+      "owasp_category": "A03:2021-Injection",
+      "url": "http://localhost:8080/vulnerabilities/xss_r/",
+      "description": "La aplicación refleja datos controlados por el usuario en la respuesta HTTP sin sanitizar.",
+      "solution": "Implementar codificación de entidades HTML (HTML Entity Encoding) para toda entrada de usuario.",
+      "cweid": 79,
+      "evidence": "Payload: <script>alert('XSS')</script>"
+    },
+    {
+      "id": 905,
+      "scan_id": 104,
+      "source": "ffuf",
+      "type": "Directorio Oculto Expuesto",
+      "severity": "Medium",
+      "cvss_score": 5.3,
+      "owasp_category": "A01:2021-Broken Access Control",
+      "url": "http://localhost:8080/phpmyadmin/",
+      "description": "Se descubrió un panel de administración de base de datos expuesto públicamente.",
+      "solution": "Restringir el acceso a este directorio por IP o protegerlo con un WAF/autenticación.",
+      "cweid": 425,
+      "evidence": "Status: 200 OK"
+    },
+    {
+      "id": 906,
+      "scan_id": 104,
+      "source": "ZAP",
+      "type": "Local File Inclusion (LFI)",
+      "severity": "High",
+      "cvss_score": 7.5,
+      "owasp_category": "A01:2021-Broken Access Control",
+      "url": "http://localhost:8080/vulnerabilities/fi/?page=include.php",
+      "description": "Exposición de la lógica de inclusión dinámica permitiendo Directory Traversal.",
+      "solution": "Emplear listas blancas (Whitelists) para restringir archivos permitidos.",
+      "cweid": 22,
+      "evidence": "Payload: ../../../../../../etc/passwd"
+    },
+    {
+      "id": 907,
+      "scan_id": 102,
+      "source": "ZAP",
+      "type": "Ausencia de Anti-CSRF Tokens",
+      "severity": "Medium",
+      "cvss_score": 4.3,
+      "owasp_category": "A01:2021-Broken Access Control",
+      "url": "http://api.tienda-local.com/user/change_password",
+      "description": "El formulario de cambio de contraseña no posee tokens de mitigación CSRF.",
+      "solution": "Implementar tokens Anti-CSRF únicos por sesión.",
+      "cweid": 352,
+      "evidence": "Falta parámetro 'user_token' en POST"
+    }
+  ]
+}

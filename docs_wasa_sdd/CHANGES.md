@@ -1,7 +1,7 @@
 # WASA Landing Page & FastAPI Bridge — Roadmap de Implementación
 **Metodología**: SDD (Spec-Driven Development)
-**Última actualización**: 2026-08-21 (rev: autenticación JWT + SQLite users)
-**Versión**: 1.1
+**Última actualización**: 2026-08-21 (rev: autenticación JWT + tabla users en PostgreSQL db_fuzzing)
+**Versión**: 1.2
 
 ---
 
@@ -23,7 +23,7 @@ CHANGE-00c (.env ambos proyectos — incluye JWT_SECRET, DB_URL)
     │
     ├── CHANGE-00d (CORS + Rate Limiting) ──────────── depende de 00a
     │
-    ├── CHANGE-01 (SQLite DB + ORM model User) ─────── depende de 00a
+    ├── CHANGE-01 (PostgreSQL db_fuzzing + ORM model User) ── depende de 00a
     │       │
     │       ├── CHANGE-02 (Auth Pydantic schemas) ──── depende de 01
     │       │       │
@@ -94,7 +94,7 @@ CHANGE-00c (.env ambos proyectos — incluye JWT_SECRET, DB_URL)
   `schemas/auth_schemas.py`, `schemas/scan_schemas.py`,
   `exceptions/handlers.py`
 - `requirements.txt` con: fastapi, pydantic[email], python-jose[cryptography],
-  passlib[bcrypt], sqlalchemy, aiosqlite, httpx, slowapi, uvicorn, python-dotenv
+  passlib[bcrypt], sqlalchemy, asyncpg, httpx, slowapi, uvicorn, python-dotenv
 - `main.py` con app FastAPI básica (solo GET /health)
 
 **Criterios de Aceptación:**
@@ -151,7 +151,9 @@ CHANGE-00c (.env ambos proyectos — incluye JWT_SECRET, DB_URL)
 
 **Alcance:**
 - `fastapi_bridge/.env` con: N8N_WEBHOOK_URL, N8N_WEBHOOK_TOKEN,
-  JWT_SECRET, TOKEN_EXPIRE_HOURS=24, DB_URL=sqlite+aiosqlite:///./users.db,
+  JWT_SECRET, TOKEN_EXPIRE_HOURS=24,
+  DB_URL=postgresql+asyncpg://user:pass@host:5432/db_fuzzing (misma
+  instancia PostgreSQL que ya usa el sistema WASA),
   CORS_ORIGINS, RATE_LIMIT_REQUESTS=10, RATE_LIMIT_WINDOW=3600,
   APP_ENV=development
 - `fastapi_bridge/.env.example` (valores placeholder)
@@ -193,32 +195,36 @@ CHANGE-00c (.env ambos proyectos — incluye JWT_SECRET, DB_URL)
 
 ---
 
-## CHANGE-01: SQLITE DB + ORM MODEL USER (FastAPI Backend)
+## CHANGE-01: POSTGRESQL DB_FUZZING + ORM MODEL USER (FastAPI Backend)
 
 | Campo              | Valor                                                     |
 | :----------------- | :-------------------------------------------------------- |
-| **Nombre**         | sqlite-user-model                                         |
+| **Nombre**         | postgres-user-model                                       |
 | **Historias US**   | HU-03-01, HU-06-02                                        |
-| **Funcionalidad**  | Engine SQLAlchemy async + modelo ORM User + tabla users   |
+| **Funcionalidad**  | Engine SQLAlchemy async + modelo ORM User + tabla users, sobre la misma instancia PostgreSQL db_fuzzing ya usada por el sistema WASA |
 | **Dependencias**   | CHANGE-00a                                                |
 | **Duración est.**  | 1.5 horas                                                 |
 | **Estado**         | ⬜ Pendiente                                              |
 
 **Alcance:**
 - `db/base.py`: `Base = DeclarativeBase()`, `engine = create_async_engine(settings.DB_URL)`
+  donde `DB_URL` apunta a la MISMA base `db_fuzzing` (driver `asyncpg`).
 - `db/session.py`: `AsyncSessionLocal = async_sessionmaker(engine, ...)`
 - `db/models.py`: clase `User(Base)` con columnas:
   `id` (Integer PK Auto), `email` (String unique, nullable=False),
   `hashed_password` (String, nullable=False), `created_at` (DateTime, default=now)
 - `main.py`: en startup event, `async with engine.begin() as conn: await conn.run_sync(Base.metadata.create_all)`
-- La tabla `users` se crea en `users.db` al iniciar si no existe
+- La tabla `users` se crea en `db_fuzzing` al iniciar si no existe. Las tablas
+  existentes (`scans`, `vulnerabilities`) NO se ven afectadas por este
+  `create_all` porque SQLAlchemy solo declara el modelo `User`.
 
 **Criterios de Aceptación:**
-- [ ] Al arrancar la app, el archivo `users.db` se crea automáticamente.
+- [ ] Al arrancar la app, la tabla `users` se crea automáticamente en `db_fuzzing`.
 - [ ] La tabla `users` existe con las columnas correctas.
 - [ ] La columna `email` tiene constraint UNIQUE.
-- [ ] El engine es async (usa aiosqlite como driver).
+- [ ] El engine es async (usa `asyncpg` como driver contra PostgreSQL).
 - [ ] La creación es idempotente: arrancar dos veces no duplica la tabla.
+- [ ] Las tablas `scans` y `vulnerabilities` existentes no se alteran ni se vacían.
 
 ---
 
@@ -258,7 +264,7 @@ CHANGE-00c (.env ambos proyectos — incluye JWT_SECRET, DB_URL)
 | :----------------- | :-------------------------------------------------------- |
 | **Nombre**         | user-repository                                           |
 | **Historias US**   | HU-03-01, HU-03-02                                        |
-| **Funcionalidad**  | CRUD sobre tabla users en SQLite (get_by_email, create)   |
+| **Funcionalidad**  | CRUD sobre tabla users en PostgreSQL db_fuzzing (get_by_email, create) |
 | **Dependencias**   | CHANGE-01, CHANGE-02                                      |
 | **Duración est.**  | 1 hora                                                    |
 | **Estado**         | ⬜ Pendiente                                              |
@@ -881,8 +887,8 @@ CHANGE-00c (.env ambos proyectos — incluye JWT_SECRET, DB_URL)
   - [ ] POST a /scan/start con JWT válido y body correcto: 202 en < 3 segundos.
   - [ ] Redirección al Dashboard ocurre tras el 202.
   - [ ] En n8n UI: el workflow aparece en execution history.
-  - [ ] En SQLite: SELECT en users.db confirma el usuario registrado.
-  - [ ] En PostgreSQL: SELECT en scans confirma el escaneo iniciado.
+  - [ ] En PostgreSQL db_fuzzing: SELECT en tabla users confirma el usuario registrado.
+  - [ ] En PostgreSQL db_fuzzing: SELECT en tabla scans confirma el escaneo iniciado.
   - [ ] Rate limiting: solicitud 11 recibe 429 desde la misma IP.
 
 ---
@@ -928,7 +934,7 @@ CHANGE-00c (.env ambos proyectos — incluye JWT_SECRET, DB_URL)
 CHANGE-00a → CHANGE-00b → CHANGE-00c → CHANGE-00d
 ```
 
-### Sprint 2 — Auth Backend (7h): SQLite + JWT completo
+### Sprint 2 — Auth Backend (7h): PostgreSQL (db_fuzzing) + JWT completo
 ```
 CHANGE-01 → CHANGE-02 → CHANGE-07 → CHANGE-03 → CHANGE-04
 → CHANGE-05 → CHANGE-06

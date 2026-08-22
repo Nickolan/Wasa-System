@@ -1,0 +1,214 @@
+{
+  "version": 3,
+  "step": "done",
+  "owner": "jr-orchestrator",
+  "kb": {
+    "created_by": "kb-creator",
+    "source": "ingest",
+    "discovery": {
+      "problem": "Exponer una interfaz pública (Landing Page) con autenticación para que solo usuarios registrados puedan lanzar escaneos de seguridad WASA, sin acceso directo a n8n.",
+      "system_type": "saas_multi_tenant (sin aislamiento de tenant real; ver scale)",
+      "domain": "cybersecurity / application security assessment (AppSec tooling)",
+      "scale": "public_multi_user (inferred, medium confidence — ver 10_preguntas_abiertas.md)",
+      "stack": "React 18 + Vite + TypeScript + Tailwind + Zustand (frontend) / Python 3.11 + FastAPI + Pydantic v2 + SQLAlchemy async (asyncpg) + python-jose + passlib (backend) / PostgreSQL db_fuzzing (compartida) + n8n + Redis (infra existente)",
+      "needs_infra": true
+    },
+    "files": [
+      "knowledge-base/README.md",
+      "knowledge-base/01_vision_y_objetivos.md",
+      "knowledge-base/02_descripcion_general.md",
+      "knowledge-base/03_actores_y_roles.md",
+      "knowledge-base/04_modelo_de_datos.md",
+      "knowledge-base/05_reglas_de_negocio.md",
+      "knowledge-base/06_funcionalidades.md",
+      "knowledge-base/07_flujos_principales.md",
+      "knowledge-base/08_arquitectura_propuesta.md",
+      "knowledge-base/09_decisiones_y_supuestos.md",
+      "knowledge-base/10_preguntas_abiertas.md"
+    ]
+  },
+  "roadmap": {
+    "created_by": "roadmap-generator",
+    "source": "CHANGES.md",
+    "changes": [
+      "CHANGE-00a",
+      "CHANGE-00b",
+      "CHANGE-00c",
+      "CHANGE-00d",
+      "CHANGE-01",
+      "CHANGE-02",
+      "CHANGE-03",
+      "CHANGE-04",
+      "CHANGE-05",
+      "CHANGE-06",
+      "CHANGE-07",
+      "CHANGE-08",
+      "CHANGE-09",
+      "CHANGE-10",
+      "CHANGE-11",
+      "CHANGE-12",
+      "CHANGE-13",
+      "CHANGE-14",
+      "CHANGE-15",
+      "CHANGE-16",
+      "CHANGE-17",
+      "CHANGE-18",
+      "CHANGE-19",
+      "CHANGE-20",
+      "CHANGE-21",
+      "CHANGE-22"
+    ]
+  },
+  "skills": {
+    "created_by": "find-skill",
+    "mode": "recommend-only",
+    "recommended": [
+      {
+        "name": "vercel-react-best-practices",
+        "source": "vercel-labs/agent-skills@vercel-react-best-practices",
+        "installs": "652.7K",
+        "why": "Official Vercel React/Next-adjacent best practices; directly matches the React 18 + Vite + TS frontend."
+      },
+      {
+        "name": "tailwind-design-system",
+        "source": "wshobson/agents@tailwind-design-system",
+        "installs": "60.4K",
+        "why": "High-install Tailwind design-system conventions for the landing page UI; alternative: giuseppe-trisciuoglio/developer-kit@tailwind-css-patterns (15.2K)."
+      },
+      {
+        "name": "zustand-state-management",
+        "source": "jezweb/claude-skills@zustand-state-management",
+        "installs": "1.3K",
+        "why": "Dedicated Zustand patterns skill matching the frontend's state manager; broader alternative: wshobson/agents@react-state-management (12.9K)."
+      },
+      {
+        "name": "react-hook-form-zod",
+        "source": "ovachiever/droid-tings@react-hook-form-zod",
+        "installs": "680",
+        "why": "Exact-combo skill for React Hook Form + Zod, used for the landing page's signup/login/scan-request forms."
+      },
+      {
+        "name": "zod-validation-utilities",
+        "source": "giuseppe-trisciuoglio/developer-kit@zod-validation-utilities",
+        "installs": "2.2K",
+        "why": "Deeper Zod schema-validation reference for request/response contracts shared with the FastAPI bridge."
+      },
+      {
+        "name": "fastapi-templates",
+        "source": "wshobson/agents@fastapi-templates",
+        "installs": "23.1K",
+        "why": "Highest-install FastAPI skill; scaffolds routers/dependencies matching the bridge's Pydantic v2 + async SQLAlchemy stack."
+      },
+      {
+        "name": "fastapi (official)",
+        "source": "fastapi/fastapi@fastapi",
+        "installs": "8K",
+        "why": "Official FastAPI org skill — lower installs but most authoritative source for framework-specific guidance."
+      },
+      {
+        "name": "fastapi-async-patterns",
+        "source": "thebushidocollective/han@fastapi-async-patterns",
+        "installs": "936",
+        "why": "Targets async FastAPI + asyncpg/SQLAlchemy patterns, matching the bridge's async DB access to the shared db_fuzzing instance."
+      },
+      {
+        "name": "sqlalchemy-alembic-expert-best-practices-code-review",
+        "source": "wispbit-ai/skills@sqlalchemy-alembic-expert-best-practices-code-review",
+        "installs": "1.5K",
+        "why": "SQLAlchemy + Alembic best-practice review, relevant for safely reading/writing the shared PostgreSQL scan tables without breaking existing schema."
+      },
+      {
+        "name": "pydantic (official)",
+        "source": "pydantic/skills@pydantic",
+        "installs": "580",
+        "why": "Official Pydantic org skill; matches Pydantic v2 request/response models used by the bridge."
+      },
+      {
+        "name": "auth-security-reviewer",
+        "source": "patricio0312rev/skills@auth-security-reviewer",
+        "installs": "287",
+        "why": "Reviews auth implementations specifically — directly applicable to the JWT auth wall gating access to WASA scans (CRITICAL-governance domain)."
+      },
+      {
+        "name": "testing-api-authentication-weaknesses",
+        "source": "mukul975/anthropic-cybersecurity-skills@testing-api-authentication-weaknesses",
+        "installs": "373",
+        "why": "Cybersecurity-focused skill for probing API auth weaknesses; aligns with the AppSec domain and JWT-gated endpoints."
+      },
+      {
+        "name": "api-authentication",
+        "source": "aj-geddes/useful-ai-prompts@api-authentication",
+        "installs": "563",
+        "why": "General API authentication implementation guidance covering JWT flows used by python-jose/passlib in the bridge."
+      },
+      {
+        "name": "implementing-api-rate-limiting-and-throttling",
+        "source": "mukul975/anthropic-cybersecurity-skills@implementing-api-rate-limiting-and-throttling",
+        "installs": "239",
+        "why": "Security-focused rate-limiting guidance matching the slowapi dependency, important to prevent scan-trigger abuse."
+      },
+      {
+        "name": "security-review",
+        "source": "getsentry/skills@security-review",
+        "installs": "14.2K",
+        "why": "Reputable (Sentry) general security-review skill for the auth wall and bridge code; note a built-in `security-review` skill is already available natively in this environment and may cover part of this need without install."
+      },
+      {
+        "name": "application-security-testing",
+        "source": "usestrix/strix@application-security-testing",
+        "installs": "258",
+        "why": "AppSec testing skill matching the project's cybersecurity/AppSec-tooling domain (orchestrating ZAP/Nuclei/ffuf/SQLMap via WASA)."
+      },
+      {
+        "name": "appsec-owasp",
+        "source": "maddhruv/absolute@appsec-owasp",
+        "installs": "152",
+        "why": "OWASP-aligned AppSec checklist skill, useful for hardening the public landing page + auth bridge against common web vulnerabilities."
+      },
+      {
+        "name": "n8n-workflow",
+        "source": "claude-office-skills/skills@n8n-workflow",
+        "installs": "4K",
+        "why": "Highest-install n8n workflow skill; relevant since the bridge triggers WASA scans orchestrated via n8n without touching it directly."
+      }
+    ],
+    "installed": [
+      "tailwind-design-system",
+      "fastapi-templates",
+      "fastapi-async-patterns",
+      "sqlalchemy-alembic-expert-best-practices-code-review",
+      "pydantic",
+      "auth-security-reviewer",
+      "implementing-api-rate-limiting-and-throttling",
+      "n8n-workflow",
+      "zustand"
+    ]
+  },
+  "registry": {
+    "created_by": "skill-registry",
+    "path": ".atl/skill-registry.md",
+    "indexed_skills": [
+      "tailwind-design-system",
+      "fastapi-templates",
+      "fastapi-async-patterns",
+      "sqlalchemy-alembic-expert-best-practices-code-review",
+      "pydantic",
+      "auth-security-reviewer",
+      "implementing-api-rate-limiting-and-throttling",
+      "n8n-workflow",
+      "zustand"
+    ],
+    "project_conventions_found": [],
+    "notes": "Project Conventions section left empty — no AGENTS.md/CLAUDE.md/.cursorrules exist yet at project root; will be populated once agent-instruction runs.",
+    "gitignore_updated": false
+  },
+  "agents": {
+    "created_by": "agent-instruction",
+    "files": ["AGENTS.md", "CLAUDE.md"],
+    "reglas_applied": [
+      "naming-y-capas-estrictas (Python snake_case/PascalCase/type hints, TS PascalCase/camelCase, Router->Service->UoW->Repository, FSD unidireccional)",
+      "governance-auth-MEDIUM-con-checkpoints (excepcion puntual a CRITICAL global, solo CHANGE-01..07)",
+      "db-safety-nunca-modificar-scans-vulnerabilities (solo create_all para User, sin Alembic sobre esquema existente)"
+    ]
+  }
+}

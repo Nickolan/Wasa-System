@@ -2,7 +2,7 @@
   WASA — Web Application Security Assessment
   Sistema SaaS de Escaneo de Seguridad Automatizado
   Descripción Integral del Sistema — Landing Page & FastAPI Bridge
-  Versión 1.1 | 2026-08-21 (rev: autenticación JWT)
+  Versión 1.2 | 2026-08-21 (rev: autenticación JWT + persistencia en PostgreSQL db_fuzzing)
 ================================================================================
 
 ÍNDICE
@@ -84,9 +84,10 @@ Solución (este módulo):
 │                     │ configurar y lanzar escaneos WASA.                  │
 │                     │ Provee: target_url, phpsessid, parámetros SQLMap.    │
 ├─────────────────────┼──────────────────────────────────────────────────────┤
-│ FastAPI Bridge      │ Microservicio Python. Gestiona usuarios (SQLite),    │
-│ (FB)                │ emite JWTs, valida tokens, aplica rate limiting y    │
-│                     │ delega el escaneo al webhook de n8n.                │
+│ FastAPI Bridge      │ Microservicio Python. Gestiona usuarios (PostgreSQL  │
+│ (FB)                │ db_fuzzing, tabla `users`), emite JWTs, valida       │
+│                     │ tokens, aplica rate limiting y delega el escaneo al  │
+│                     │ webhook de n8n.                                      │
 │                     │ Actor interno / sistema.                             │
 ├─────────────────────┼──────────────────────────────────────────────────────┤
 │ n8n Orchestrator    │ Recibe el webhook, inyecta variables al workflow y   │
@@ -116,8 +117,9 @@ PASO 2 — AUTENTICACIÓN (Login / Registro)
   El Usuario Anónimo debe autenticarse:
     OPCIÓN A — Registro:
       - Completa modal/formulario con email y contraseña (min 8 chars).
-      - POST /api/v1/auth/register → FastAPI crea usuario en SQLite,
-        hashea la contraseña con bcrypt, emite JWT.
+      - POST /api/v1/auth/register → FastAPI crea usuario en PostgreSQL
+        (tabla `users` de db_fuzzing), hashea la contraseña con bcrypt,
+        emite JWT.
       - El frontend almacena el JWT en localStorage via authStore (Zustand).
       - El modal se cierra y el formulario de escaneo se hace visible.
     OPCIÓN B — Login:
@@ -177,13 +179,10 @@ PASO 6 — REDIRECCIÓN (Dashboard existente)
 │                      │ python-jose + cryptography  │ JWT: crear/verificar │
 │                      │ passlib[bcrypt]             │ Hash de contraseñas  │
 │                      │ SQLAlchemy 2.x (async)      │ ORM                  │
-│                      │ aiosqlite                   │ Driver SQLite async  │
+│                      │ asyncpg                     │ Driver PostgreSQL async│
 │                      │ httpx (async)               │ Cliente HTTP a n8n   │
 │                      │ slowapi                     │ Rate limiting        │
 │                      │ Uvicorn                     │ ASGI server          │
-├──────────────────────┼─────────────────────────────┼──────────────────────┤
-│ DB Local (Bridge)    │ SQLite                      │ Usuarios del servicio│
-│                      │ Archivo: users.db           │ Solo tabla `users`   │
 ├──────────────────────┼─────────────────────────────┼──────────────────────┤
 │ Orquestación         │ n8n (self-hosted)           │ Workflow engine      │
 │                      │ Webhook Trigger node        │ Punto de entrada     │
@@ -199,6 +198,7 @@ PASO 6 — REDIRECCIÓN (Dashboard existente)
 │ Persistencia         │ PostgreSQL (db_fuzzing)     │ Resultados de scans  │
 │                      │ Tabla: scans                │ Metadata escaneo     │
 │                      │ Tabla: vulnerabilities      │ Hallazgos            │
+│                      │ Tabla: users (nueva)        │ Usuarios del SaaS    │
 ├──────────────────────┼─────────────────────────────┼──────────────────────┤
 │ Dashboard (existente)│ React + Node.js/Express     │ Visualización        │
 │                      │ (ya validado en tesis)      │ No se modifica       │
@@ -231,25 +231,26 @@ PASO 6 — REDIRECCIÓN (Dashboard existente)
   │  CORS + Rate Limiting + RFC 7807 + Pydantic BaseSettings  │
   └────────────┬──────────────────────┬──────────────────────┘
                │ SQLAlchemy async     │ POST <n8n-webhook-url>
-               ▼                      ▼
-  ┌──────────────────────┐  ┌──────────────────────────────┐
-  │  SQLite (local)      │  │   CAPA 2: ORQUESTACIÓN       │
-  │  fastapi_bridge/     │  │   n8n Workflow               │
-  │  users.db            │  │   Webhook Trigger            │
-  │  Tabla: users        │  │   → ZAP → Nuclei → ffuf      │
-  └──────────────────────┘  │   → LPUSH sqlmap_tasks       │
-                            └──────────┬───────────────────┘
-                                       │
-                        ┌──────────────┴──────────────┐
-                        │ BLPOP                        │ INSERT
-                        ▼                             ▼
-             ┌──────────────────────┐  ┌──────────────────────────┐
-             │  CAPA 3: EJECUCIÓN   │  │   CAPA 4: PERSISTENCIA   │
-             │  Python SQLMap       │  │   PostgreSQL db_fuzzing   │
-             │  Worker              │──│   scans + vulns          │
-             └──────────────────────┘  └──────────────┬───────────┘
-                                                      │ SELECT
-                                                      ▼
+               │ (misma conexión)     ▼
+               │           ┌──────────────────────────────┐
+               │           │   CAPA 2: ORQUESTACIÓN       │
+               │           │   n8n Workflow               │
+               │           │   Webhook Trigger            │
+               │           │   → ZAP → Nuclei → ffuf      │
+               │           │   → LPUSH sqlmap_tasks       │
+               │           └──────────┬───────────────────┘
+               │                      │
+               │       ┌──────────────┴──────────────┐
+               │       │ BLPOP                        │ INSERT
+               │       ▼                             ▼
+               │  ┌──────────────────────┐  ┌──────────────────────────┐
+               │  │  CAPA 3: EJECUCIÓN   │  │   CAPA 4: PERSISTENCIA   │
+               │  │  Python SQLMap       │  │   PostgreSQL db_fuzzing   │
+               │  │  Worker              │──│   scans + vulns + users  │
+               │  └──────────────────────┘  └──────────────┬───────────┘
+               └────────────────────────────────────────────┘
+                                                            │ SELECT
+                                                            ▼
   ┌─────────────────────────────────────────────────────────┐
   │              CAPA 5: PRESENTACIÓN INTERNA               │
   │  Dashboard React/Node.js (existente, validado en tesis) │
@@ -258,12 +259,14 @@ PASO 6 — REDIRECCIÓN (Dashboard existente)
 
 
 ================================================================================
-7. MODELO DE DATOS LOCAL DEL FASTAPI BRIDGE
+7. MODELO DE DATOS DE USUARIOS DEL FASTAPI BRIDGE
 ================================================================================
 
-El FastAPI Bridge mantiene su PROPIA base de datos SQLite local (users.db).
-Esta base de datos es independiente del PostgreSQL db_fuzzing del sistema WASA.
-Su único propósito es gestionar las cuentas de usuario del servicio SaaS.
+El FastAPI Bridge NO crea una base de datos propia. Reutiliza la misma
+instancia PostgreSQL (db_fuzzing) que ya usa el sistema WASA para persistir
+resultados de escaneo (scans, vulnerabilities), agregando una tabla nueva
+(`users`) a ese mismo esquema. Esto evita mantener dos motores de base de
+datos distintos y centraliza la persistencia del sistema.
 
 TABLA: users
   ┌───────────────────┬──────────────────┬────────────────────────────────────┐
@@ -279,8 +282,11 @@ TABLA: users
 NOTAS:
   - El password en texto plano NUNCA se persiste.
   - El email se almacena en lowercase (normalizado al registrar).
-  - Las migraciones se manejan via SQLAlchemy create_all al startup.
-  - Esta tabla NO se relaciona con PostgreSQL db_fuzzing.
+  - La tabla se crea via SQLAlchemy create_all al startup, apuntando al
+    mismo DB_URL de PostgreSQL db_fuzzing; no afecta las tablas existentes
+    (scans, vulnerabilities).
+  - Esta tabla NO tiene FK ni relación con scans/vulnerabilities; convive
+    en el mismo esquema pero es independiente a nivel de dominio.
 
 
 ================================================================================
@@ -314,6 +320,8 @@ El módulo Landing + FastAPI se integra con ellos pero NO los modifica.
             ffuf_count, sqlmap_count)
     - vulnerabilities(id, scan_id, source, type, severity, url,
                       description, solution, cweid, evidence)
+    - users(id, email, hashed_password, created_at) — tabla NUEVA agregada
+      por el FastAPI Bridge para la autenticación del SaaS.
 
   Dashboard React/Node.js:
     - 3 vistas: Panel General (KPIs + gráficos), Reporte Detallado,
@@ -372,8 +380,9 @@ ERRORES (FastAPI → Frontend, formato RFC 7807):
 
 DENTRO DEL ALCANCE (este SDD):
   - Landing Page React (FSD): secciones públicas + muro de auth + scan form.
-  - FastAPI Bridge: autenticación JWT (register/login), tabla users (SQLite),
-    validación Pydantic, rate limiting, forwarding a n8n webhook.
+  - FastAPI Bridge: autenticación JWT (register/login), tabla `users` NUEVA
+    en PostgreSQL db_fuzzing, validación Pydantic, rate limiting, forwarding
+    a n8n webhook.
   - authStore Zustand: estado global de autenticación en el frontend.
   - Modales de Login y Registro en el frontend.
   - Protección del endpoint /scan/start con JWT Bearer.
@@ -383,7 +392,9 @@ FUERA DEL ALCANCE (componentes existentes, no se tocan):
   - Workflow interno de n8n (solo se agrega el nodo Webhook Trigger).
   - Python SQLMap Worker.
   - Redis / Memurai.
-  - PostgreSQL db_fuzzing (DDL, tablas, datos).
+  - Tablas existentes de PostgreSQL db_fuzzing: `scans` y `vulnerabilities`
+    (DDL y datos). El Bridge solo agrega la tabla nueva `users`; no las lee
+    ni las escribe.
   - Node.js/Express API del Dashboard.
   - React Dashboard (Panel General, Reporte, Endpoints).
 
@@ -409,7 +420,8 @@ FastAPI Bridge (.env):
   N8N_WEBHOOK_TOKEN     Token secreto para autenticar el request a n8n
   JWT_SECRET            Clave secreta para firmar y verificar JWT
   TOKEN_EXPIRE_HOURS    Tiempo de vida del JWT en horas (default: 24)
-  DB_URL                URL de conexión SQLite (ej: sqlite+aiosqlite:///./users.db)
+  DB_URL                URL de conexión a PostgreSQL db_fuzzing (ej:
+                        postgresql+asyncpg://user:pass@host:5432/db_fuzzing)
   CORS_ORIGINS          Lista de orígenes permitidos (Landing Page URL)
   RATE_LIMIT_REQUESTS   Requests permitidos por ventana (default: 10)
   RATE_LIMIT_WINDOW     Ventana en segundos (default: 3600)
