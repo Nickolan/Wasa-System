@@ -175,7 +175,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 > necesita ambos. `CHANGE-00d` cierra la fase.
 
 ### [CHANGE-00a] `fastapi-bridge-scaffold`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completo
 - **Historias US**: HU-03-01, HU-03-02
 - **Scope**:
   - Carpeta raíz `fastapi_bridge/` con estructura completa: `main.py`, `core/settings.py`,
@@ -184,8 +184,10 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
     `services/scan_service.py`, `uow/auth_unit_of_work.py`, `uow/scan_unit_of_work.py`,
     `repositories/user_repository.py`, `repositories/n8n_repository.py`,
     `schemas/auth_schemas.py`, `schemas/scan_schemas.py`, `exceptions/handlers.py`
-  - `requirements.txt`: fastapi, pydantic[email], python-jose[cryptography],
+  - `requirements.txt`: fastapi, pydantic[email], pydantic-settings, python-jose[cryptography],
     passlib[bcrypt], sqlalchemy, asyncpg, httpx, slowapi, uvicorn, python-dotenv
+  - `requirements-dev.txt`: pytest, pytest-asyncio, anyio (runner de tests, requerido por
+    el modo TDD estricto desde este primer change; no se incluye en el manifiesto de runtime)
   - `main.py` con app FastAPI básica (solo `GET /health`)
 - **Dependencias**: ninguna
 - **Duración estimada**: 1 hora
@@ -195,11 +197,11 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/02_descripcion_general.md` §Stack
   - `knowledge-base/01_vision_y_objetivos.md`
 - **Criterios de Aceptación**:
-  - [ ] `uvicorn fastapi_bridge.main:app --reload` arranca sin errores.
-  - [ ] GET /health retorna `{"status": "ok", "service": "wasa-fastapi-bridge"}`.
-  - [ ] La estructura de carpetas refleja exactamente los dos dominios (auth + scan).
-  - [ ] `requirements.txt` contiene todas las dependencias.
-  - [ ] `core/settings.py` tiene campos para JWT_SECRET, TOKEN_EXPIRE_HOURS, DB_URL.
+  - [x] `uvicorn fastapi_bridge.main:app --reload` arranca sin errores.
+  - [x] GET /health retorna `{"status": "ok", "service": "wasa-fastapi-bridge"}`.
+  - [x] La estructura de carpetas refleja exactamente los dos dominios (auth + scan).
+  - [x] `requirements.txt` contiene todas las dependencias.
+  - [x] `core/settings.py` tiene campos para JWT_SECRET, TOKEN_EXPIRE_HOURS, DB_URL.
 
 ---
 
@@ -963,7 +965,12 @@ CHANGE-21 → CHANGE-22
 
 ## Ya realizado (archivado)
 
-_Ningún change archivado aún. Esta sección se actualizará a medida que se completen los changes (mover a `openspec/changes/archive/`)._
+### [CHANGE-00a] `fastapi-bridge-scaffold` — Archivado 2026-08-22
+
+- **Cambio**: Scaffold inicial del FastAPI Bridge
+- **Archivado en**: `openspec/changes/archive/2026-08-22-fastapi-bridge-scaffold/`
+- **Spec sincronizado a**: `openspec/specs/bridge-bootstrap/spec.md`
+- **Estado**: Completado con 63 tests verdes, todos los 5 criterios de aceptación verificados en vivo
 
 ---
 

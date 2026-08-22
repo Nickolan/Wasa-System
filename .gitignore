@@ -1,0 +1,13 @@
+.env
+fastapi_bridge/.env
+wasa-landing/.env
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+fastapi_bridge/.venv/
+
+node_modules/
+dist/
