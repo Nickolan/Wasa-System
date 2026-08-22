@@ -1,5 +1,7 @@
-## ADDED Requirements
+## Purpose
 
+Establecer la base estructural del proyecto React + Vite (wasa-landing) con configuración de desarrollo, estilos Tailwind y arquitectura Feature-Sliced Design, sin implementar funcionalidad de dominio ni dependencias de runtime.
+## Requirements
 ### Requirement: El proyecto arranca en modo desarrollo
 La Landing Page SHALL existir como proyecto Vite en `wasa-landing/`, capaz de arrancar su servidor de desarrollo sin ninguna dependencia de infraestructura externa (FastAPI Bridge, PostgreSQL, n8n) disponible.
 
@@ -124,6 +126,7 @@ El change SHALL limitarse a la estructura. Ninguna regla de negocio, store, sche
 - **WHEN** se inspeccionan `src/entities/`, `src/shared/ui/` y `src/features/`
 - **THEN** no existen schemas Zod, ni los átomos `Button`/`Input`/`Checkbox`/`Spinner`/`Modal`, ni features de auth o de scan (pertenecen a CHANGE-14 a CHANGE-18)
 
-#### Scenario: Sin cliente HTTP configurado ni variables de entorno
-- **WHEN** se inspeccionan `src/shared/api/` y `src/shared/config/`
-- **THEN** no existe una instancia de Axios con interceptor Bearer (CHANGE-16) ni `env.ts`, y no se versiona ningún archivo `.env` (CHANGE-00c)
+#### Scenario: Sin cliente HTTP configurado
+- **WHEN** se inspecciona `src/shared/api/`
+- **THEN** no existe una instancia de Axios con interceptor Bearer (pertenece a CHANGE-16) y el directorio queda vacío, marcado únicamente con un `.gitkeep` anotado
+

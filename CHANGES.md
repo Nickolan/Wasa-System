@@ -239,7 +239,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-00c] `env-config`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` implementado (ver nota de permisos abajo)
 - **Historias US**: HU-03-01, HU-06-02
 - **Scope**:
   - `fastapi_bridge/.env`: N8N_WEBHOOK_URL, N8N_WEBHOOK_TOKEN, JWT_SECRET,
@@ -258,10 +258,10 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/09_decisiones_y_supuestos.md`
   - `knowledge-base/10_preguntas_abiertas.md` (valores reales de DB_URL/N8N_WEBHOOK_URL no documentados)
 - **Criterios de Aceptación**:
-  - [ ] `core/settings.py` lee JWT_SECRET y DB_URL correctamente del `.env`.
-  - [ ] `src/shared/config/env.ts` exporta las dos variables Vite correctamente.
-  - [ ] Los `.env` reales NO están en el repositorio.
-  - [ ] Los `.env.example` están en el repositorio.
+  - [x] `core/settings.py` lee JWT_SECRET y DB_URL correctamente del `.env` (verificado inyectando los valores reales vía variables de entorno de shell, sin escribir el archivo — ver nota de permisos).
+  - [x] `src/shared/config/env.ts` exporta las dos variables Vite correctamente (TDD completo, `wasa-landing/tests/env.test.ts`, 5/5 verde).
+  - [x] Los `.env` reales NO están en el repositorio (`git check-ignore` + `git ls-files` verificado, tests de contrato).
+  - [ ] Los `.env.example` están en el repositorio — **pendiente**: el agente no pudo escribir ningún archivo `.env*` (ni siquiera `.env.example`) por la configuración de permisos; el usuario debe pegar el contenido entregado en el apply y hacer `git add` de los cuatro archivos `.env*` (2 reales + 2 example).
 
 ---
 

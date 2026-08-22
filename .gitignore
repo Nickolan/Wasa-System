@@ -1,6 +1,12 @@
 .env
 fastapi_bridge/.env
 wasa-landing/.env
+.env.local
+.env.*.local
+
+# Los .env.example SÍ se versionan — son la documentación ejecutable del
+# contrato de configuración (D-8, runtime-configuration).
+!*.env.example
 
 __pycache__/
 *.pyc
