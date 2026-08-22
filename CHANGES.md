@@ -175,7 +175,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 > necesita ambos. `CHANGE-00d` cierra la fase.
 
 ### [CHANGE-00a] `fastapi-bridge-scaffold`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completo
 - **Historias US**: HU-03-01, HU-03-02
 - **Scope**:
   - Carpeta raíz `fastapi_bridge/` con estructura completa: `main.py`, `core/settings.py`,
@@ -184,8 +184,10 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
     `services/scan_service.py`, `uow/auth_unit_of_work.py`, `uow/scan_unit_of_work.py`,
     `repositories/user_repository.py`, `repositories/n8n_repository.py`,
     `schemas/auth_schemas.py`, `schemas/scan_schemas.py`, `exceptions/handlers.py`
-  - `requirements.txt`: fastapi, pydantic[email], python-jose[cryptography],
+  - `requirements.txt`: fastapi, pydantic[email], pydantic-settings, python-jose[cryptography],
     passlib[bcrypt], sqlalchemy, asyncpg, httpx, slowapi, uvicorn, python-dotenv
+  - `requirements-dev.txt`: pytest, pytest-asyncio, anyio (runner de tests, requerido por
+    el modo TDD estricto desde este primer change; no se incluye en el manifiesto de runtime)
   - `main.py` con app FastAPI básica (solo `GET /health`)
 - **Dependencias**: ninguna
 - **Duración estimada**: 1 hora
@@ -195,25 +197,29 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/02_descripcion_general.md` §Stack
   - `knowledge-base/01_vision_y_objetivos.md`
 - **Criterios de Aceptación**:
-  - [ ] `uvicorn fastapi_bridge.main:app --reload` arranca sin errores.
-  - [ ] GET /health retorna `{"status": "ok", "service": "wasa-fastapi-bridge"}`.
-  - [ ] La estructura de carpetas refleja exactamente los dos dominios (auth + scan).
-  - [ ] `requirements.txt` contiene todas las dependencias.
-  - [ ] `core/settings.py` tiene campos para JWT_SECRET, TOKEN_EXPIRE_HOURS, DB_URL.
+  - [x] `uvicorn fastapi_bridge.main:app --reload` arranca sin errores.
+  - [x] GET /health retorna `{"status": "ok", "service": "wasa-fastapi-bridge"}`.
+  - [x] La estructura de carpetas refleja exactamente los dos dominios (auth + scan).
+  - [x] `requirements.txt` contiene todas las dependencias.
+  - [x] `core/settings.py` tiene campos para JWT_SECRET, TOKEN_EXPIRE_HOURS, DB_URL.
 
 ---
 
 ### [CHANGE-00b] `react-landing-scaffold`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-01-01, HU-06-01
 - **Scope**:
-  - `npm create vite@latest wasa-landing -- --template react-ts`
-  - Instalar: tailwindcss, postcss, autoprefixer, react-hook-form, zod,
-    @hookform/resolvers, axios, zustand
-  - Configurar Tailwind (`tailwind.config.ts`, `postcss.config.ts`, `index.css`)
+  - `npm create vite@latest wasa-landing -- --template react-ts` (React 19.x, Vite 8.x, TS ~6.0.x —
+    lo que scaffoldea el comando al momento de implementar, sin downgrade a versiones fijas;
+    ver `knowledge-base/02_descripcion_general.md` y D-2 en `openspec/changes/react-landing-scaffold/design.md`)
+  - Instalar: tailwindcss@^4, @tailwindcss/vite@^4, react-hook-form, zod,
+    @hookform/resolvers, axios, zustand (sin postcss ni autoprefixer — Tailwind 4 no los usa)
+  - Configurar Tailwind 4 (plugin `@tailwindcss/vite` en `vite.config.ts`, `@import "tailwindcss";`
+    en `src/app/index.css` — sin `tailwind.config.ts` ni `postcss.config.*`)
   - Estructura FSD: `src/app/stores/`, `src/pages/`, `src/widgets/`, `src/features/`,
     `src/entities/`, `src/shared/`
-  - Path aliases en `vite.config.ts` y `tsconfig.json`
+  - Path aliases en `vite.config.ts` y `tsconfig.app.json` (no en `tsconfig.json` raíz, que en el
+    template de Vite es solo de `references`)
   - `src/app/App.tsx` renderiza `<LandingPage />` placeholder
 - **Dependencias**: ninguna
 - **Duración estimada**: 1 hora
@@ -223,17 +229,17 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/02_descripcion_general.md` §Stack
   - `knowledge-base/01_vision_y_objetivos.md`
 - **Criterios de Aceptación**:
-  - [ ] `npm run dev` arranca sin errores en puerto 5173.
-  - [ ] `npm run build` genera build sin errores TypeScript.
-  - [ ] La estructura de carpetas FSD (incluyendo `app/stores/`) existe.
-  - [ ] Zustand instalado y verificado (importación sin error).
-  - [ ] Tailwind CSS funciona en un componente de prueba.
-  - [ ] Los path aliases funcionan.
+  - [x] `npm run dev` arranca sin errores en puerto 5173.
+  - [x] `npm run build` genera build sin errores TypeScript.
+  - [x] La estructura de carpetas FSD (incluyendo `app/stores/`) existe.
+  - [x] Zustand instalado y verificado (importación sin error).
+  - [x] Tailwind CSS funciona en un componente de prueba.
+  - [x] Los path aliases funcionan.
 
 ---
 
 ### [CHANGE-00c] `env-config`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` implementado (ver nota de permisos abajo)
 - **Historias US**: HU-03-01, HU-06-02
 - **Scope**:
   - `fastapi_bridge/.env`: N8N_WEBHOOK_URL, N8N_WEBHOOK_TOKEN, JWT_SECRET,
@@ -252,15 +258,15 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/09_decisiones_y_supuestos.md`
   - `knowledge-base/10_preguntas_abiertas.md` (valores reales de DB_URL/N8N_WEBHOOK_URL no documentados)
 - **Criterios de Aceptación**:
-  - [ ] `core/settings.py` lee JWT_SECRET y DB_URL correctamente del `.env`.
-  - [ ] `src/shared/config/env.ts` exporta las dos variables Vite correctamente.
-  - [ ] Los `.env` reales NO están en el repositorio.
-  - [ ] Los `.env.example` están en el repositorio.
+  - [x] `core/settings.py` lee JWT_SECRET y DB_URL correctamente del `.env` (verificado inyectando los valores reales vía variables de entorno de shell, sin escribir el archivo — ver nota de permisos).
+  - [x] `src/shared/config/env.ts` exporta las dos variables Vite correctamente (TDD completo, `wasa-landing/tests/env.test.ts`, 5/5 verde).
+  - [x] Los `.env` reales NO están en el repositorio (`git check-ignore` + `git ls-files` verificado, tests de contrato).
+  - [ ] Los `.env.example` están en el repositorio — **pendiente**: el agente no pudo escribir ningún archivo `.env*` (ni siquiera `.env.example`) por la configuración de permisos; el usuario debe pegar el contenido entregado en el apply y hacer `git add` de los cuatro archivos `.env*` (2 reales + 2 example).
 
 ---
 
 ### [CHANGE-00d] `fastapi-cors-ratelimit`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` implementado (109/109 tests verdes; ver nota del criterio 429 abajo)
 - **Historias US**: HU-03-06
 - **Scope**:
   - `CORSMiddleware` con `allow_origins` desde `settings.CORS_ORIGINS`
@@ -275,11 +281,11 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-06
   - `knowledge-base/08_arquitectura_propuesta.md` §Variables de entorno (`CORS_ORIGINS`, `RATE_LIMIT_*`)
 - **Criterios de Aceptación**:
-  - [ ] Request desde origen no en CORS_ORIGINS recibe bloqueo CORS.
-  - [ ] Request desde origen permitido recibe headers CORS correctos.
-  - [ ] La solicitud 11 a /scan/start (misma IP, misma ventana) recibe 429.
-  - [ ] La respuesta 429 incluye header `Retry-After`.
-  - [ ] Los endpoints de auth NO están sujetos al rate limit del scan.
+  - [x] Request desde origen no en CORS_ORIGINS recibe bloqueo CORS (semántica real verificada, D-3: ausencia de `Access-Control-Allow-Origin` en solicitud simple, `400` en preflight — CORS no es un "403 del servidor").
+  - [x] Request desde origen permitido recibe headers CORS correctos.
+  - [x] La solicitud 11 a /scan/start (misma IP, misma ventana) recibe 429 — **verificado sobre la política, no sobre el path real**: `POST /api/v1/scan/start` todavía no se monta en este change (D-8, `bridge-bootstrap`); los tests de `fastapi_bridge/tests/test_rate_limit.py` montan una ruta desechable decorada con el mismo `scan_rate_limit` exportado que CHANGE-12 aplicará sobre `POST /start`. La verificación end-to-end sobre el path real queda a cargo de CHANGE-12.
+  - [x] La respuesta 429 incluye header `Retry-After`.
+  - [x] Los endpoints de auth NO están sujetos al rate limit del scan.
 
 ---
 
@@ -963,7 +969,12 @@ CHANGE-21 → CHANGE-22
 
 ## Ya realizado (archivado)
 
-_Ningún change archivado aún. Esta sección se actualizará a medida que se completen los changes (mover a `openspec/changes/archive/`)._
+### [CHANGE-00a] `fastapi-bridge-scaffold` — Archivado 2026-08-22
+
+- **Cambio**: Scaffold inicial del FastAPI Bridge
+- **Archivado en**: `openspec/changes/archive/2026-08-22-fastapi-bridge-scaffold/`
+- **Spec sincronizado a**: `openspec/specs/bridge-bootstrap/spec.md`
+- **Estado**: Completado con 63 tests verdes, todos los 5 criterios de aceptación verificados en vivo
 
 ---
 

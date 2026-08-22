@@ -9,7 +9,7 @@
 
 | Capa | Tecnología | Versión |
 |------|------------|---------|
-| Frontend | React + TypeScript + Vite / Tailwind CSS / React Hook Form + Zod / Axios / Zustand | React 18.x, TS 5.x, Vite 5.x |
+| Frontend | React + TypeScript + Vite / Tailwind CSS 4 / React Hook Form + Zod / Axios / Zustand | React 19.x, TS 5.9.x, Vite 7.x, Tailwind 4.x |
 | Backend | Python + FastAPI / Pydantic v2 / python-jose + passlib[bcrypt] / SQLAlchemy async + asyncpg / httpx / slowapi / Uvicorn | Python 3.11+, FastAPI 0.111+ |
 | Persistencia | PostgreSQL `db_fuzzing` (instancia **compartida** con el sistema WASA existente) | — |
 | Orquestación (existente, no se modifica) | n8n self-hosted (Webhook Trigger), Redis/Memurai, Python SQLMap Worker | — |
