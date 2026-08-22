@@ -266,7 +266,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-00d] `fastapi-cors-ratelimit`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` implementado (109/109 tests verdes; ver nota del criterio 429 abajo)
 - **Historias US**: HU-03-06
 - **Scope**:
   - `CORSMiddleware` con `allow_origins` desde `settings.CORS_ORIGINS`
@@ -281,11 +281,11 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-06
   - `knowledge-base/08_arquitectura_propuesta.md` §Variables de entorno (`CORS_ORIGINS`, `RATE_LIMIT_*`)
 - **Criterios de Aceptación**:
-  - [ ] Request desde origen no en CORS_ORIGINS recibe bloqueo CORS.
-  - [ ] Request desde origen permitido recibe headers CORS correctos.
-  - [ ] La solicitud 11 a /scan/start (misma IP, misma ventana) recibe 429.
-  - [ ] La respuesta 429 incluye header `Retry-After`.
-  - [ ] Los endpoints de auth NO están sujetos al rate limit del scan.
+  - [x] Request desde origen no en CORS_ORIGINS recibe bloqueo CORS (semántica real verificada, D-3: ausencia de `Access-Control-Allow-Origin` en solicitud simple, `400` en preflight — CORS no es un "403 del servidor").
+  - [x] Request desde origen permitido recibe headers CORS correctos.
+  - [x] La solicitud 11 a /scan/start (misma IP, misma ventana) recibe 429 — **verificado sobre la política, no sobre el path real**: `POST /api/v1/scan/start` todavía no se monta en este change (D-8, `bridge-bootstrap`); los tests de `fastapi_bridge/tests/test_rate_limit.py` montan una ruta desechable decorada con el mismo `scan_rate_limit` exportado que CHANGE-12 aplicará sobre `POST /start`. La verificación end-to-end sobre el path real queda a cargo de CHANGE-12.
+  - [x] La respuesta 429 incluye header `Retry-After`.
+  - [x] Los endpoints de auth NO están sujetos al rate limit del scan.
 
 ---
 
