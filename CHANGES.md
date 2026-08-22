@@ -366,28 +366,52 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-03] `user-repository`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-03-01, HU-03-02
 - **Scope**:
   - `repositories/user_repository.py`: clase `UserRepository`, constructor recibe
     `session: AsyncSession`
-  - Método async `get_by_email(email: str) -> User | None`
+  - Método async `get_by_email(email: str) -> User | None`: normaliza el email a
+    lowercase antes de consultar (ver Nota de implementación, D-4)
   - Método async `create(email: str, hashed_password: str) -> User`: normaliza email a
     lowercase antes de guardar; si hay IntegrityError (email duplicado) lanza
     `EmailAlreadyExistsError`
 - **Dependencias**: CHANGE-01, CHANGE-02
 - **Duración estimada**: 1 hora
-- **Governance**: CRITICO
+- **Governance**: MEDIO
 - **Leer antes**:
   - `knowledge-base/04_modelo_de_datos.md` §users
   - `knowledge-base/08_arquitectura_propuesta.md` §Patrones (Repository)
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-13
 - **Criterios de Aceptación**:
-  - [ ] `get_by_email` retorna el User si existe, None si no.
-  - [ ] `create` con email nuevo: INSERT exitoso, retorna User con id poblado.
-  - [ ] `create` con email duplicado: lanza `EmailAlreadyExistsError`.
-  - [ ] El email se guarda en lowercase (ej: "USER@TEST.COM" → "user@test.com").
-  - [ ] El repository no conoce nada de FastAPI ni de passlib.
+  - [x] `get_by_email` retorna el User si existe, None si no.
+  - [x] `create` con email nuevo: INSERT exitoso, retorna User con id poblado.
+  - [x] `create` con email duplicado: lanza `EmailAlreadyExistsError`.
+  - [x] El email se guarda en lowercase (ej: "USER@TEST.COM" → "user@test.com").
+  - [x] El repository no conoce nada de FastAPI ni de passlib.
+- **Nota de implementación**: cuatro desviaciones/extensiones respecto del scope original
+  de arriba, todas aprobadas por el usuario en el checkpoint de governance de `tasks.md`
+  1.3 (ver `openspec/changes/user-repository/design.md` D-1, D-3, D-4, D-5, D-6):
+  1. **Normalización de email simétrica**: el roadmap solo pedía normalizar en `create`;
+     `get_by_email` también normaliza con la misma función (`_normalize_email`, definida
+     una sola vez). Sin esto, un usuario registrado con mayúsculas quedaría inalcanzable
+     al loguearse con la misma capitalización que usó al registrarse (D-4, R-1).
+  2. **`EmailAlreadyExistsError` vive en un módulo nuevo, `exceptions/domain.py`**, con
+     una base `DomainError` de la que hereda. El roadmap no especificaba ubicación; se
+     descartó tanto el módulo del repositorio (dependencia invertida hacia la capa web)
+     como `exceptions/handlers.py` (arrastraría Starlette/slowapi a una capa que debe ser
+     reutilizable fuera del framework web) (D-1).
+  3. **`create` hace `flush()` + `refresh()`, nunca `commit()`/`rollback()`**: el límite
+     transaccional (confirmar en el camino feliz, deshacer ante excepción) queda a cargo
+     de la `AuthUoW` de CHANGE-04, que es la dueña del alcance completo de la operación de
+     negocio (D-5, R-4 — ver traspaso anotado en CHANGE-04 más abajo).
+  4. **`aiosqlite` como dependencia de desarrollo nueva** (`requirements-dev.txt`, no
+     `requirements.txt`): primera dependencia nueva desde CHANGE-00a, necesaria para
+     ejercitar el repositorio contra un motor async real (incluida la violación de
+     unicidad real, no simulada contra un doble) (D-6).
+  5. **Corrección de governance**: esta sección figuraba como **CRITICO**; el `CLAUDE.md`
+     del proyecto baja explícitamente todo el dominio Auth (CHANGE-01..07) a **MEDIO** por
+     decisión del usuario — la misma corrección ya aplicada en CHANGE-02.
 
 ---
 
@@ -427,7 +451,17 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   decidiendo entre (a) fijar `bcrypt<4.1` en `requirements.txt`, o (b) usar la librería
   `bcrypt` directamente y sacar `passlib` (recomendación corriente: passlib no tiene
   release desde 2020). Ver `openspec/changes/auth-pydantic-schemas/design.md` §Contexto
-  y R-1.
+  y R-1. **Sigue sin resolver** al cierre de CHANGE-03: el repositorio nunca importa
+  `passlib` (anclado por la fila `("repositories", "passlib")` de
+  `tests/test_layer_boundaries.py`), así que no era asunto de ese change, pero es lo
+  primero que bloquea a este.
+- **⚠️ Traspaso de CHANGE-03 (`user-repository`, D-5, R-4, R-7)**: `AuthUoW` debe hacer
+  `commit()` en el camino feliz y `rollback()` ante cualquier excepción — `UserRepository
+  .create` solo hace `flush()`/`refresh()`, nunca confirma ni deshace por su cuenta. **No**
+  reemplazar la captura de `IntegrityError` del repositorio por un chequeo previo con
+  `get_by_email`: ese chequeo es una optimización de UX (evita el viaje redondo del
+  `INSERT` fallido), no la garantía de RN-WS-13 — la da el motor, incluso ante
+  inserciones concurrentes que la validación previa no puede detectar (R-7).
 
 ---
 
@@ -502,6 +536,13 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - [ ] Error 500 produce RFC 7807 con mensaje genérico (sin stack trace).
   - [ ] El campo `instance` refleja el path del endpoint que falló.
   - [ ] Los errores 401 y 409 también pasan por el handler.
+- **⚠️ Traspaso de CHANGE-03 (`user-repository`, D-1, D-2)**: `EmailAlreadyExistsError`
+  (`fastapi_bridge/exceptions/domain.py`) debe mapearse a **409 Conflict** vía
+  `problem_detail_response(...)` de `exceptions/handlers.py`, usando `exc.email` (el email
+  ya normalizado) para componer el `detail` sin volver a consultar la base. Conviene
+  registrar el `exception_handler` sobre la base `DomainError` en vez de sobre la
+  excepción concreta: CHANGE-04 (`InvalidCredentialsError`) y CHANGE-11 heredan de la
+  misma base y quedarían cubiertos por el mismo handler.
 
 ---
 
