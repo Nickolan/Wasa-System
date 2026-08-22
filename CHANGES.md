@@ -295,7 +295,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 > inicio de la fase (solo depende de `00a`) y confluyendo en `05`.
 
 ### [CHANGE-01] `postgres-user-model`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-03-01, HU-06-02
 - **Scope**:
   - `db/base.py`: `Base = DeclarativeBase()`, `engine = create_async_engine(settings.DB_URL)`
@@ -315,12 +315,13 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-12, RN-WS-13
   - `knowledge-base/09_decisiones_y_supuestos.md` (decisión: PostgreSQL `db_fuzzing` compartida, no SQLite)
 - **Criterios de Aceptación**:
-  - [ ] Al arrancar la app, la tabla `users` se crea automáticamente en `db_fuzzing`.
-  - [ ] La tabla `users` existe con las columnas correctas.
-  - [ ] La columna `email` tiene constraint UNIQUE.
-  - [ ] El engine es async (usa `asyncpg` como driver contra PostgreSQL).
-  - [ ] La creación es idempotente: arrancar dos veces no duplica la tabla.
-  - [ ] Las tablas `scans` y `vulnerabilities` existentes no se alteran ni se vacían.
+  - [x] Al arrancar la app, la tabla `users` se crea automáticamente en `db_fuzzing`.
+  - [x] La tabla `users` existe con las columnas correctas.
+  - [x] La columna `email` tiene constraint UNIQUE.
+  - [x] El engine es async (usa `asyncpg` como driver contra PostgreSQL).
+  - [x] La creación es idempotente: arrancar dos veces no duplica la tabla.
+  - [x] Las tablas `scans` y `vulnerabilities` existentes no se alteran ni se vacían.
+- **Nota de implementación**: `engine`/`AsyncSessionLocal` se implementaron como factories perezosas cacheadas (`get_engine(settings)`, `get_session_factory(settings)`), no como objetos de nivel de módulo — desviación deliberada documentada en `design.md` D-1, requerida por el test AST de `bridge-bootstrap` que prohíbe `create_async_engine`/`create_all` en el import. Desbloquea CHANGE-02 (`auth-pydantic-schemas`) y CHANGE-03 (`user-repository`).
 
 ---
 
