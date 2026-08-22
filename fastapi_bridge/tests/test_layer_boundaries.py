@@ -16,6 +16,9 @@ LAYER_IMPORT_RULES: list[tuple[str, str]] = [
     ("api", "httpx"),
     ("services", "sqlalchemy"),
     ("services", "httpx"),
+    ("schemas", "fastapi"),
+    ("schemas", "sqlalchemy"),
+    ("schemas", "httpx"),
 ]
 
 

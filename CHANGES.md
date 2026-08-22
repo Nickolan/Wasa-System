@@ -295,7 +295,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 > inicio de la fase (solo depende de `00a`) y confluyendo en `05`.
 
 ### [CHANGE-01] `postgres-user-model`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-03-01, HU-06-02
 - **Scope**:
   - `db/base.py`: `Base = DeclarativeBase()`, `engine = create_async_engine(settings.DB_URL)`
@@ -315,36 +315,53 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-12, RN-WS-13
   - `knowledge-base/09_decisiones_y_supuestos.md` (decisión: PostgreSQL `db_fuzzing` compartida, no SQLite)
 - **Criterios de Aceptación**:
-  - [ ] Al arrancar la app, la tabla `users` se crea automáticamente en `db_fuzzing`.
-  - [ ] La tabla `users` existe con las columnas correctas.
-  - [ ] La columna `email` tiene constraint UNIQUE.
-  - [ ] El engine es async (usa `asyncpg` como driver contra PostgreSQL).
-  - [ ] La creación es idempotente: arrancar dos veces no duplica la tabla.
-  - [ ] Las tablas `scans` y `vulnerabilities` existentes no se alteran ni se vacían.
+  - [x] Al arrancar la app, la tabla `users` se crea automáticamente en `db_fuzzing`.
+  - [x] La tabla `users` existe con las columnas correctas.
+  - [x] La columna `email` tiene constraint UNIQUE.
+  - [x] El engine es async (usa `asyncpg` como driver contra PostgreSQL).
+  - [x] La creación es idempotente: arrancar dos veces no duplica la tabla.
+  - [x] Las tablas `scans` y `vulnerabilities` existentes no se alteran ni se vacían.
+- **Nota de implementación**: `engine`/`AsyncSessionLocal` se implementaron como factories perezosas cacheadas (`get_engine(settings)`, `get_session_factory(settings)`), no como objetos de nivel de módulo — desviación deliberada documentada en `design.md` D-1, requerida por el test AST de `bridge-bootstrap` que prohíbe `create_async_engine`/`create_all` en el import. Desbloquea CHANGE-02 (`auth-pydantic-schemas`) y CHANGE-03 (`user-repository`).
 
 ---
 
 ### [CHANGE-02] `auth-pydantic-schemas`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-03-01, HU-03-02, HU-03-07
 - **Scope**:
-  - `schemas/auth_schemas.py`: `UserRegister` (email EmailStr, password str min_length=8),
-    `UserLogin` (email EmailStr, password str min_length=1), `TokenResponse`
-    (access_token, token_type Literal["bearer"], expires_in int), `TokenData`
-    (email str | None = None — payload del JWT)
-  - `schemas/scan_schemas.py`: `ErrorDetail` (type, title, status, detail, instance — RFC 7807)
+  - `schemas/auth_schemas.py`: `UserRegister` (email EmailStr, password str min_length=8,
+    techo de 72 bytes UTF-8), `UserLogin` (email EmailStr, password str min_length=1,
+    mismo techo de 72 bytes), `TokenResponse` (access_token, token_type Literal["bearer"],
+    expires_in int), `TokenData` (email str | None = None — payload del JWT)
+  - `schemas/error_schemas.py`: `ErrorDetail` (type, title, status, detail, instance — RFC 7807)
 - **Dependencias**: CHANGE-01
 - **Duración estimada**: 1 hora
-- **Governance**: BAJO
+- **Governance**: BAJO (implementado como MEDIO — override de `CLAUDE.md` para el dominio Auth CHANGE-01..07)
 - **Leer antes**:
   - `knowledge-base/06_funcionalidades.md` §HU-03-01, HU-03-02, HU-03-07
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-15 (password mínimo 8 chars)
 - **Criterios de Aceptación**:
-  - [ ] `UserRegister` con password de 7 chars falla validación.
-  - [ ] `UserRegister` con email inválido falla validación.
-  - [ ] `TokenResponse` se puede serializar a JSON correctamente.
-  - [ ] `TokenData` acepta email None sin error.
-  - [ ] Tests unitarios de schemas pasan.
+  - [x] `UserRegister` con password de 7 chars falla validación.
+  - [x] `UserRegister` con email inválido falla validación.
+  - [x] `TokenResponse` se puede serializar a JSON correctamente.
+  - [x] `TokenData` acepta email None sin error.
+  - [x] Tests unitarios de schemas pasan.
+- **Nota de implementación**: dos desviaciones respecto del scope original de arriba, ambas
+  aprobadas por el usuario en el checkpoint de governance de `tasks.md` 1.3 (ver
+  `openspec/changes/auth-pydantic-schemas/design.md` D-2 y D-10):
+  1. **Techo de 72 bytes UTF-8 en la contraseña** (`UserRegister.password` y
+     `UserLogin.password`), no contemplado en el roadmap ni en la KB. Es el límite duro
+     del algoritmo bcrypt instalado (bcrypt 5.0.0 lanza `ValueError` por encima de 72
+     bytes en vez de truncar); sin el tope, una contraseña larga produciría un 500 en
+     vez de un 422. Medido en bytes UTF-8 codificados, no en caracteres (`max_length`
+     de Pydantic no sirve para esto). **CHANGE-14 (Zod) debe replicar esta regla** —
+     ver tarea 8.4.
+  2. **`ErrorDetail` vive en `schemas/error_schemas.py`** (módulo nuevo), no en
+     `schemas/scan_schemas.py` como decía el scope original de arriba. Es un contrato
+     transversal consumido por `exceptions/handlers.py` (CHANGE-07) y por el dominio
+     auth, no solo por scan; alojarlo en `scan_schemas.py` habría sido una dependencia
+     invertida. `schemas/scan_schemas.py` (CHANGE-08) ya no promete `ErrorDetail` en su
+     scope ni en su docstring.
 
 ---
 
@@ -402,6 +419,15 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - [ ] `decode_access_token(expired_jwt)` retorna TokenData(email=None).
   - [ ] `AuthService.login` con credenciales inválidas lanza `InvalidCredentialsError`.
   - [ ] `AuthService.register` con email duplicado lanza `EmailAlreadyExistsError`.
+- **⚠️ Hallazgo bloqueante (R-1, descubierto en CHANGE-02)**: `passlib 1.7.4` (declarado
+  en `requirements.txt` como `passlib[bcrypt]>=1.7`, sin techo) está roto contra
+  `bcrypt 5.0.0` (la versión que resuelve el entorno actual): `passlib/handlers/bcrypt.py`
+  lee `bcrypt.__about__.__version__`, atributo eliminado en bcrypt ≥ 4.1, y
+  `CryptContext(schemes=["bcrypt"]).hash(...)` falla. Este change debe arrancar
+  decidiendo entre (a) fijar `bcrypt<4.1` en `requirements.txt`, o (b) usar la librería
+  `bcrypt` directamente y sacar `passlib` (recomendación corriente: passlib no tiene
+  release desde 2020). Ver `openspec/changes/auth-pydantic-schemas/design.md` §Contexto
+  y R-1.
 
 ---
 
@@ -659,6 +685,14 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - [ ] `registerSchema.parse({ ..., password: "1234567", confirmPassword: "1234567" })` lanza ZodError (< 8 chars).
   - [ ] `registerSchema.parse({ ..., password: "pass1234", confirmPassword: "diferente" })` lanza ZodError.
   - [ ] `tsc --noEmit` sin errores en `entities/user/`.
+- **⚠️ Paridad obligatoria con `schemas/auth_schemas.py` (CHANGE-02)**: `registerSchema`
+  DEBE replicar exactamente las mismas reglas que `UserRegister` del backend —
+  mismo mínimo de 8 caracteres, **mismo techo de 72 bytes UTF-8** en la contraseña
+  (medido en bytes, no en `.length` de JS, que cuenta unidades UTF-16), mismos campos
+  y sin campos extra (el backend usa `extra="forbid"`). El techo de 72 bytes no está
+  en la KB — es una decisión de CHANGE-02 (D-2) — y si este change no lo replica, el
+  formulario deja escribir una contraseña que el backend rechaza con un 422 opaco sin
+  explicación visible en el form (R-2 en `openspec/changes/auth-pydantic-schemas/design.md`).
 
 ---
 
