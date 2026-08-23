@@ -60,9 +60,14 @@ describe('roadmap-committed subdirectories exist', () => {
   })
 })
 
-describe('no domain functionality leaks into the scaffold (D-14, Non-Goals)', () => {
-  it('src/app/stores/authStore.ts does not exist', () => {
-    expect(existsSync(path.join(projectRoot, 'src/app/stores/authStore.ts'))).toBe(false)
+describe('cada pieza de dominio aparece únicamente en el change que la implementa (CHANGE-13)', () => {
+  it('src/app/stores/authStore.ts exists', () => {
+    expect(existsSync(path.join(projectRoot, 'src/app/stores/authStore.ts'))).toBe(true)
+  })
+
+  it('src/app/stores/ contains no other store besides authStore.ts', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/app/stores'))
+    expect(files).toEqual(['authStore.ts'])
   })
 
   it.each(['src/entities', 'src/shared/ui', 'src/shared/api', 'src/features'])(
