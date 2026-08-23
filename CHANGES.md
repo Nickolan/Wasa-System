@@ -699,14 +699,20 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-11] `scan-service`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` hecho (⚠️ ver nota de regresión no resuelta al final de esta sección)
 - **Historias US**: HU-03-04, HU-03-05
 - **Scope**:
-  - `services/scan_service.py`: clase `ScanService`, método async
-    `start_scan(request: ScanRequest) -> ScanResponse`: genera `scan_id = str(uuid.uuid4())`,
-    construye N8nPayload desde ScanRequest + scan_id, usa `async with ScanUoW() as uow:`
-    → `uow.n8n.forward_scan(payload)`, retorna ScanResponse si éxito o relanza
-    N8nUnavailableError si falla
+  - `services/scan_service.py`: clase `ScanService`, constructor
+    `__init__(self, uow_factory: Callable[[], ScanUoW] = ScanUoW) -> None` (D-2 de
+    CHANGE-11: extensión deliberada respecto del constructor sin argumentos listado
+    originalmente acá — fábrica inyectable con `ScanUoW` como default de producción,
+    de modo que el call site real siga siendo `async with ScanUoW() as uow:`; evita
+    reentrar la misma instancia de `ScanUoW`, prohibido por CHANGE-10)
+  - Método async `start_scan(request: ScanRequest) -> ScanResponse`: genera
+    `scan_id = str(uuid.uuid4())`, construye `N8nPayload` desde `ScanRequest` + `scan_id`
+    campo a campo, usa `async with self._uow_factory() as uow:` → `uow.n8n.forward_scan(payload)`,
+    retorna `ScanResponse` si la entrega fue aceptada; no captura `N8nUnavailableError`,
+    se propaga sin envolver
 - **Dependencias**: CHANGE-10
 - **Duración estimada**: 1 hora
 - **Governance**: MEDIO
@@ -714,10 +720,23 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/07_flujos_principales.md` §Flujo 3: Escaneo
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-07
 - **Criterios de Aceptación**:
-  - [ ] `start_scan` con ScanRequest válida retorna ScanResponse con UUID v4.
-  - [ ] Si N8nRepository lanza N8nUnavailableError, el Service lo propaga.
-  - [ ] El Service no importa httpx directamente.
-  - [ ] Test unitario mockea ScanUoW y verifica que el scan_id llega al payload.
+  - [x] `start_scan` con ScanRequest válida retorna ScanResponse con UUID v4. (`test_start_scan_returns_a_scan_response`, `test_scan_id_has_the_shape_of_a_uuid_v4`)
+  - [x] Si N8nRepository lanza N8nUnavailableError, el Service lo propaga. (`test_n8n_unavailable_error_reaches_the_caller_with_its_original_type`, `test_propagated_exception_type_is_exactly_n8n_unavailable_error_not_a_subclass`)
+  - [x] El Service no importa httpx directamente. (`test_scan_service_module_does_not_import_httpx_sqlalchemy_asyncpg_or_the_db_layer`, `fastapi_bridge/tests/test_layer_boundaries.py::test_layer_respects_import_boundary[services-httpx]`, `[services-sqlalchemy]`)
+  - [x] Test unitario mockea ScanUoW y verifica que el scan_id llega al payload. (`test_response_scan_id_is_identical_to_the_scan_id_captured_in_the_delivered_payload`, `test_injected_uow_factory_wins_over_the_default`)
+
+  **Falso positivo detectado y corregido (fuera del scope de dos archivos del change, aprobado puntualmente por el usuario)**:
+  al escribir `class ScanService` como código real (no docstring), `fastapi_bridge/tests/test_no_shared_db_impact.py::test_no_reference_to_existing_shared_tables`
+  (CHANGE-00a, `bridge-bootstrap`) empezó a fallar. Esa prueba buscaba la subcadena
+  literal `"scans"` en el código en minúsculas; `"class ScanService:"` en minúsculas
+  es `"class scanservice:"`, que **contiene** `"scans"` como subcadena — falso
+  positivo del checker (no hay ninguna referencia real a la tabla `scans` de
+  `db_fuzzing`; `ScanRequest`, `ScanResponse` y `ScanUoW` no colisionan, sólo
+  `ScanService` lo hace). Se endureció el checker a un patrón con límite de
+  palabra (`\bscans\b` / `\bvulnerabilities\b`) en `test_no_shared_db_impact.py`,
+  como excepción puntual aprobada por el usuario a la regla de dos archivos de
+  este change. `pytest` completo queda en 248 passed, 0 failed (215 baseline +
+  33 tests nuevos de este change).
 
 ---
 
@@ -731,6 +750,15 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
     `ScanService.start_scan()`, retorna `JSONResponse(..., status_code=202)`,
     maneja `N8nUnavailableError` → 502 RFC 7807
   - Registrar el router en `main.py`
+  - **Nota heredada de CHANGE-11**: el Router llama `await ScanService().start_scan(request)`
+    sin construir nada de infraestructura — `ScanService()` sin argumentos ya abre
+    `async with ScanUoW() as uow:` por default (D-2). `N8nUnavailableError` llega sin
+    envolver y es el **único** caso a mapear a 502 RFC 7807; la respuesta 202 se arma
+    con la `ScanResponse` devuelta tal cual, sin transformarla. Los tests de router de
+    este change deben sustituir el `ScanService` completo (vía `dependency_overrides`
+    del Router), no sólo `get_settings`, porque `ScanUoW` resuelve su propia
+    configuración y `app.dependency_overrides[get_settings]` no lo alcanza (nota
+    heredada de CHANGE-10, D-2).
 - **Dependencias**: CHANGE-11, CHANGE-06, CHANGE-00d
 - **Duración estimada**: 1 hora
 - **Governance**: ALTO
