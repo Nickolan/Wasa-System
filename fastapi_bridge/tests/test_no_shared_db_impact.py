@@ -118,11 +118,28 @@ def test_only_settings_module_reads_os_environ():
         )
 
 
-async def test_lifespan_cycle_opens_no_network_or_db_connection():
-    # Con PostgreSQL y n8n inaccesibles, importar fastapi_bridge.main y correr
-    # el ciclo completo de lifespan (startup + shutdown) no debe lanzar ninguna
-    # excepción de conexión — el hook está vacío por diseño (D-10).
+async def test_lifespan_cycle_only_opens_connection_to_create_users_table(
+    monkeypatch, fake_engine_factory
+):
+    # D-9: la garantía vieja ("el lifespan no abre conexión") se vuelve falsa
+    # a propósito en CHANGE-01 — DD-02 exige que `users` viva en `db_fuzzing`.
+    # La garantía nueva y más fuerte: el lifespan abre conexión ÚNICAMENTE
+    # para crear `users`, con el DDL acotado explícitamente a esa tabla — no
+    # a `Base.metadata.create_all()` a secas. Se verifica con un doble del
+    # engine (D-8 punto 3), sin conectar contra PostgreSQL real.
+    from fastapi_bridge.db.base import Base
+    from fastapi_bridge.db.models import User
+
+    fake_engine = fake_engine_factory()
+    monkeypatch.setattr("fastapi_bridge.main.get_engine", lambda settings: fake_engine)
+
     from fastapi_bridge.main import app
 
     async with app.router.lifespan_context(app):
         pass
+
+    assert len(fake_engine.connection.run_sync_calls) == 1
+    fn, kwargs = fake_engine.connection.run_sync_calls[0]
+    assert fn.__self__ is Base.metadata
+    assert fn.__func__ is Base.metadata.create_all.__func__
+    assert kwargs == {"tables": [User.__table__]}
