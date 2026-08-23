@@ -2,7 +2,7 @@
 
 Define cómo el FastAPI Bridge entrega un escaneo ya validado al orquestador n8n: a dónde viaja el mensaje, cómo se autentica, cuánto se espera por una respuesta, qué respuesta cuenta como aceptación y cuál como indisponibilidad, y qué garantías de aislamiento —secreto que no se filtra, mecanismo de entrega independiente del framework web— rodean esa entrega. Es la contraparte de transporte de `scan-payload-contract`: aquella define la forma del mensaje, ésta define su entrega.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: El destino y la credencial de la entrega provienen de la configuración del entorno
 

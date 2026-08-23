@@ -2,7 +2,7 @@
 
 Define el contrato de datos del escaneo en el FastAPI Bridge: qué constituye una solicitud de escaneo válida (esquema de URL, sesión obligatoria, rangos y valores por defecto de los parámetros SQLMap), qué forma tiene la respuesta de aceptación que recibe el cliente, y qué forma tiene el mensaje que el Bridge reenvía al orquestador n8n. Es la autoridad de validación del sistema: ninguna solicitud que no satisfaga este contrato puede llegar a la infraestructura de escaneo.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: La URL objetivo debe ser una URL HTTP o HTTPS válida
 

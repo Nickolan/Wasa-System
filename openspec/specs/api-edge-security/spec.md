@@ -2,7 +2,7 @@
 
 Define la política de borde HTTP del FastAPI Bridge: qué orígenes de navegador pueden consumir la API y con qué métodos y headers, cuántas solicitudes por IP y por ventana de tiempo admite el endpoint que dispara escaneos, qué endpoints quedan explícitamente fuera de ese límite, y qué forma exacta tiene la respuesta cuando el límite se excede. Es la primera línea de defensa entre la Landing pública y la infraestructura de escaneo WASA existente.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Orígenes permitidos declarados por configuración
 

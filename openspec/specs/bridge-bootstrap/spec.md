@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define el arranque mínimo del FastAPI Bridge: cómo se expone como aplicación ASGI, qué endpoint de salud ofrece, de dónde sale su configuración tipada, qué estructura de capas materializa en el filesystem, qué fronteras de import separan esas capas, qué dependencias declara y qué superficie de API queda expuesta en este estadio. Es la base sobre la que se apoyan todos los changes de dominio posteriores.
+
+## Requirements
 
 ### Requirement: El servicio arranca como aplicación ASGI
 El FastAPI Bridge SHALL exponerse como una instancia ASGI importable en `fastapi_bridge.main:app`, capaz de arrancar bajo Uvicorn sin ninguna dependencia de infraestructura externa (PostgreSQL, n8n, Redis) disponible.
