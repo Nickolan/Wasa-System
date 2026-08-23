@@ -578,7 +578,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-07] `rfc7807-exception-handlers`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-03-07
 - **Scope**:
   - `exceptions/handlers.py`: handler `RequestValidationError` → 400/422 RFC 7807; handler
