@@ -9,6 +9,7 @@ como documentación de la restricción, y eso no debe contar como violación.
 """
 
 import ast
+import re
 from pathlib import Path
 
 FASTAPI_BRIDGE_ROOT = Path(__file__).resolve().parent.parent
@@ -59,7 +60,10 @@ def test_no_reference_to_existing_shared_tables():
     for py_file in _production_python_files():
         code_without_docstrings = _production_code_without_docstrings(py_file)
         for table_name in FORBIDDEN_TABLE_NAMES:
-            assert table_name not in code_without_docstrings, (
+            # \b evita falsos positivos como `ScanService`/`scan_service`, cuyo
+            # lower() ("scanservice") contiene "scans" como mero substring sin
+            # ser una referencia a la tabla compartida.
+            assert not re.search(rf"\b{table_name}\b", code_without_docstrings), (
                 f"{py_file} referencia en código (no docstring) la tabla existente "
                 f"'{table_name}' — el Bridge no debe tocar scans/vulnerabilities de db_fuzzing"
             )
