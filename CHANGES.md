@@ -416,12 +416,12 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-04] `auth-service`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` hecho (2026-08-23)
 - **Historias US**: HU-03-01, HU-03-02
 - **Scope**:
-  - `core/security.py`: `hash_password(plain) -> str` (bcrypt via passlib CryptContext),
-    `verify_password(plain, hashed) -> bool`, `create_access_token(data, expires_delta) -> str`
-    (python-jose, HS256, clave = settings.JWT_SECRET), `decode_access_token(token) -> TokenData`
+  - `core/security.py`: `hash_password(plain) -> str` (bcrypt directo, ver nota R-1 abajo),
+    `verify_password(plain, hashed) -> bool`, `create_access_token(data, expires_delta, settings) -> str`
+    (python-jose, HS256, clave = settings.JWT_SECRET), `decode_access_token(token, settings) -> TokenData`
     (retorna TokenData con email=None si el token es inválido o expirado)
   - `services/auth_service.py`: clase `AuthService` (constructor recibe `uow: AuthUoW`),
     método async `register(data: UserRegister) -> TokenResponse`, método async
@@ -429,39 +429,75 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
     contraseña no coincide, sin distinguir cuál falló — evita enumeración de usuarios)
 - **Dependencias**: CHANGE-03
 - **Duración estimada**: 1.5 horas
-- **Governance**: CRITICO
+- **Governance**: MEDIO (corrección — ver nota de implementación 5 abajo; el `CLAUDE.md` del
+  proyecto baja explícitamente todo el dominio Auth CHANGE-01..07 a MEDIO por decisión del
+  usuario, misma corrección aplicada en CHANGE-02/CHANGE-03)
 - **Leer antes**:
   - `knowledge-base/08_arquitectura_propuesta.md` §Seguridad
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-12, RN-WS-14
   - `knowledge-base/03_actores_y_roles.md`
 - **Criterios de Aceptación**:
-  - [ ] `hash_password("secret")` retorna string bcrypt (starts with "$2b$").
-  - [ ] `verify_password("secret", hash)` retorna True.
-  - [ ] `verify_password("wrong", hash)` retorna False.
-  - [ ] `create_access_token({"sub": "a@b.com"}, timedelta(hours=24))` retorna JWT válido.
-  - [ ] `decode_access_token(valid_jwt)` retorna TokenData con email correcto.
-  - [ ] `decode_access_token(expired_jwt)` retorna TokenData(email=None).
-  - [ ] `AuthService.login` con credenciales inválidas lanza `InvalidCredentialsError`.
-  - [ ] `AuthService.register` con email duplicado lanza `EmailAlreadyExistsError`.
-- **⚠️ Hallazgo bloqueante (R-1, descubierto en CHANGE-02)**: `passlib 1.7.4` (declarado
-  en `requirements.txt` como `passlib[bcrypt]>=1.7`, sin techo) está roto contra
-  `bcrypt 5.0.0` (la versión que resuelve el entorno actual): `passlib/handlers/bcrypt.py`
-  lee `bcrypt.__about__.__version__`, atributo eliminado en bcrypt ≥ 4.1, y
-  `CryptContext(schemes=["bcrypt"]).hash(...)` falla. Este change debe arrancar
-  decidiendo entre (a) fijar `bcrypt<4.1` en `requirements.txt`, o (b) usar la librería
-  `bcrypt` directamente y sacar `passlib` (recomendación corriente: passlib no tiene
-  release desde 2020). Ver `openspec/changes/auth-pydantic-schemas/design.md` §Contexto
-  y R-1. **Sigue sin resolver** al cierre de CHANGE-03: el repositorio nunca importa
-  `passlib` (anclado por la fila `("repositories", "passlib")` de
-  `tests/test_layer_boundaries.py`), así que no era asunto de ese change, pero es lo
-  primero que bloquea a este.
-- **⚠️ Traspaso de CHANGE-03 (`user-repository`, D-5, R-4, R-7)**: `AuthUoW` debe hacer
-  `commit()` en el camino feliz y `rollback()` ante cualquier excepción — `UserRepository
-  .create` solo hace `flush()`/`refresh()`, nunca confirma ni deshace por su cuenta. **No**
-  reemplazar la captura de `IntegrityError` del repositorio por un chequeo previo con
-  `get_by_email`: ese chequeo es una optimización de UX (evita el viaje redondo del
-  `INSERT` fallido), no la garantía de RN-WS-13 — la da el motor, incluso ante
-  inserciones concurrentes que la validación previa no puede detectar (R-7).
+  - [x] `hash_password("secret")` retorna string bcrypt (starts with "$2b$").
+  - [x] `verify_password("secret", hash)` retorna True.
+  - [x] `verify_password("wrong", hash)` retorna False.
+  - [x] `create_access_token({"sub": "a@b.com"}, timedelta(hours=24), settings)` retorna JWT válido.
+  - [x] `decode_access_token(valid_jwt, settings)` retorna TokenData con email correcto.
+  - [x] `decode_access_token(expired_jwt, settings)` retorna TokenData(email=None).
+  - [x] `AuthService.login` con credenciales inválidas lanza `InvalidCredentialsError`.
+  - [x] `AuthService.register` con email duplicado lanza `EmailAlreadyExistsError`.
+- **✅ R-1 cerrado (2026-08-22, checkpoint de governance MEDIUM)**: se eligió la opción (b) —
+  usar la librería `bcrypt` directamente y sacar `passlib` de `requirements.txt`
+  (`passlib[bcrypt]>=1.7` → `bcrypt>=4.1`). Reproducido en este repo antes de decidir:
+  `bcrypt 5.0.0`, `passlib 1.7.4` → `AttributeError: module 'bcrypt' has no attribute
+  '__about__'` (trapped por passlib) seguido de `ValueError: password cannot be longer
+  than 72 bytes` al hashear `"secret"` — evidencia de que passlib degrada a una ruta de
+  código incorrecta. `bcrypt 5.0.0` ya estaba instalado como dependencia transitiva de
+  `passlib[bcrypt]`, así que el cambio de manifiesto no instaló nada nuevo, solo dejó de
+  instalar `passlib`. `core/security.py` usa `bcrypt.hashpw`/`bcrypt.gensalt`/
+  `bcrypt.checkpw` directamente. La fila `("repositories", "passlib")` de
+  `tests/test_layer_boundaries.py` se conserva (costo cero, sigue siendo cierta) y se le
+  suma `("repositories", "bcrypt")` + `("services", "bcrypt"/"passlib"/"jose")`.
+- **✅ Traspaso de CHANGE-03 (`user-repository`, D-5, R-4, R-7) — cumplido**: `AuthUoW`
+  (`uow/auth_unit_of_work.py`) hace `commit()` en `__aexit__` cuando el bloque termina sin
+  excepción y `rollback()` ante cualquier excepción, incluidas las de dominio
+  (`EmailAlreadyExistsError`), cerrando la sesión siempre. `AuthService.register` **no**
+  antepone un chequeo con `get_by_email` — anclado por test AST (`test_register_does_not_
+  call_get_by_email`, 7.9) — la garantía de unicidad la da la constraint del motor.
+- **Notas de implementación**:
+  1. **`AuthService.register`/`login` obtienen `Settings` vía `get_settings()` interno**, no
+     por parámetro: a diferencia de `create_access_token`/`decode_access_token` (D-5 de
+     `design.md`, que sí reciben `Settings` explícito por ser funciones puras de
+     `core/security.py`), `AuthService` recibe únicamente la `AuthUoW` por constructor —tal
+     como especifica esta sección y la spec `auth-session`— y usa el mismo `get_settings()`
+     cacheado que el resto del Bridge. Desviación documentada de la firma abreviada de este
+     documento (`create_access_token(data, expires_delta)`, sin `settings`): la firma real es
+     `create_access_token(data, expires_delta, settings)` (D-5).
+  2. **El hashing y la verificación se descargan a thread pool** (`anyio.to_thread.run_sync`)
+     desde el primer commit de `AuthService`, no como optimización posterior (D-3): bcrypt con
+     coste 12 es ~250-400ms de CPU, y sin el offload un solo registro concurrente serializaría
+     todas las peticiones del servicio.
+  3. **Hash señuelo para indistinguibilidad temporal del 401** (D-8): `_DUMMY_PASSWORD_HASH`,
+     constante de módulo derivada una sola vez al importar `services/auth_service.py`. Cuando
+     `login` no encuentra el email, igual verifica contra el señuelo y descarta el resultado,
+     para que el camino "email inexistente" pague el mismo coste de CPU que "contraseña
+     incorrecta" — sin esto, la latencia por sí sola permite enumerar usuarios.
+  4. **`InvalidCredentialsError` se agregó a `exceptions/domain.py`** (junto a
+     `EmailAlreadyExistsError`), sin atributos: a diferencia de la excepción de email
+     duplicado, no lleva el email consultado (D-11), para que CHANGE-07 no pueda interpolarlo
+     en el `detail` del RFC 7807 por accidente.
+  5. **Corrección de governance**: esta sección figuraba como **CRITICO**; el `CLAUDE.md` del
+     proyecto baja explícitamente todo el dominio Auth (CHANGE-01..07) a **MEDIO** por decisión
+     del usuario — misma corrección ya aplicada en CHANGE-02/CHANGE-03.
+  6. **Nota documental (Open Question 4 de `design.md`)**: `knowledge-base/08_arquitectura_
+     propuesta.md` §Seguridad dice "Password hashing: bcrypt vía passlib, rounds=12" —
+     desactualizado tras resolver R-1 con la opción (b). No se reescribe la KB dentro de este
+     change (mismo precedente que la nota 8.1 de CHANGE-02); queda anotado acá para quien la
+     actualice.
+- **Traspaso a CHANGE-05/CHANGE-06/CHANGE-07**: `EmailAlreadyExistsError` → mapear a 409;
+  `InvalidCredentialsError` → mapear a 401; `decode_access_token` devuelve siempre
+  `TokenData(email=None)` ante cualquier token inválido/expirado/manipulado (nunca lanza), que
+  es la base sobre la que `get_current_user` (CHANGE-06) puede responder 401 sin un `try/except`
+  propio.
 
 ---
 

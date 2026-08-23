@@ -81,6 +81,32 @@ def fake_engine_factory() -> Callable[..., FakeAsyncEngine]:
 
 
 @pytest.fixture
+async def user_session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """`async_sessionmaker` real contra SQLite en memoria, con solo `users`
+    creada (CHANGE-04, D-9 de `design.md`).
+
+    A diferencia de `user_session` (que entrega una única `AsyncSession` ya
+    abierta), esta fixture entrega la **factory**: es lo que necesita
+    `AuthUoW`, cuyo constructor recibe `session_factory` y abre una sesión
+    nueva en cada `__aenter__` (D-9) — nunca vía `get_session_factory`, que
+    apuntaría a `db_fuzzing`. Mismo motor descartable por test, mismas
+    limitaciones de fidelidad de SQLite documentadas arriba en `user_session`.
+    """
+    from fastapi_bridge.db.base import Base
+    from fastapi_bridge.db.models import User
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all, tables=[User.__table__])
+
+    session_factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+    try:
+        yield session_factory
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture
 async def user_session() -> AsyncIterator[AsyncSession]:
     """`AsyncSession` real contra SQLite en memoria, con solo `users` creada.
 

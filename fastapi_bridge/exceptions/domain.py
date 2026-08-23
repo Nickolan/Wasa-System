@@ -36,3 +36,21 @@ class EmailAlreadyExistsError(DomainError):
     def __init__(self, email: str) -> None:
         self.email = email
         super().__init__(f"El email '{email}' ya está registrado")
+
+
+class InvalidCredentialsError(DomainError):
+    """Credenciales inválidas en login — RN-WS-12 §Excepciones globales,
+    mapeada a 401 Unauthorized por CHANGE-07.
+
+    `AuthService.login` (CHANGE-04) la lanza tanto si el email no existe como
+    si la contraseña no coincide — el mismo tipo, con el mismo mensaje fijo,
+    para las dos condiciones. Asimetría deliberada respecto de
+    `EmailAlreadyExistsError`: esta excepción **no** lleva el email como
+    atributo. En un 409 por email duplicado el cliente ya sabe qué email
+    mandó; en un 401 de login, el email es exactamente el dato que un
+    atacante quiere ver confirmado, así que la tentación de interpolarlo en
+    el `detail` del RFC 7807 se elimina en el origen: no hay dónde tomarlo.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("email o contraseña incorrectos")
