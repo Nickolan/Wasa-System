@@ -4,7 +4,13 @@ Define el contrato de datos del escaneo: `ScanRequest` (entrada de
 `POST /api/v1/scan/start`), `ScanResponse` (salida del mismo endpoint) y
 `N8nPayload` (mensaje reenviado al orquestador n8n). Validación de input en
 backend (Pydantic v2), autoridad sobre la validación Zod del frontend.
+Responsabilidad futura: `ScanRequest`, `ScanResponse`, `N8nPayload`.
 Se implementa en CHANGE-08.
+
+`ErrorDetail` NO vive acá: es un contrato transversal compartido por Auth y
+Scan y se define en `fastapi_bridge/schemas/error_schemas.py` (D-10,
+CHANGE-02) para que ningún dominio importe la forma de error desde el módulo
+de otro dominio.
 """
 
 from typing import Annotated, Literal
