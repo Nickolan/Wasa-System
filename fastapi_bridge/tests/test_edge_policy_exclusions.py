@@ -76,14 +76,17 @@ async def test_auth_endpoint_keeps_responding_after_scan_quota_is_exhausted(smal
     assert auth_response.status_code == 200
 
 
-async def test_domain_routers_still_return_404_on_production_app():
+async def test_scan_router_still_returns_404_on_production_app_auth_does_not():
+    # CHANGE-05: el router de auth queda montado en la app de producción; el
+    # de scan sigue sin montarse hasta CHANGE-12. El aserto de scan (404) se
+    # conserva -- es el que impide que este change monte de más.
     transport = httpx.ASGITransport(app=production_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         scan_response = await client.post("/api/v1/scan/start")
         auth_response = await client.post("/api/v1/auth/register")
 
     assert scan_response.status_code == 404
-    assert auth_response.status_code == 404
+    assert auth_response.status_code != 404
 
 
 async def test_health_keeps_its_exact_contract_with_edge_policy_active():
