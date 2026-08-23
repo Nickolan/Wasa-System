@@ -16,6 +16,12 @@ LAYER_IMPORT_RULES: list[tuple[str, str]] = [
     ("repositories", "bcrypt"),
     ("api", "sqlalchemy"),
     ("api", "httpx"),
+    # CHANGE-05, 8.2: el router de auth compone `AuthService` por `Depends`
+    # sin conocer las librerías de hashing/JWT que ese servicio usa
+    # internamente. Mismas filas que ya existían para `services/`.
+    ("api", "bcrypt"),
+    ("api", "passlib"),
+    ("api", "jose"),
     ("services", "sqlalchemy"),
     ("services", "httpx"),
     ("services", "bcrypt"),
@@ -93,3 +99,116 @@ def test_helper_detects_a_forbidden_import(tmp_path):
     )
     imported = get_imported_top_level_modules(offending_file)
     assert "fastapi" in imported
+
+
+# ---------------------------------------------------------------------------
+# CHANGE-05, grupo 8 -- anclajes estructurales del router de auth (D-2, D-11)
+# ---------------------------------------------------------------------------
+
+AUTH_ROUTER_PATH = FASTAPI_BRIDGE_ROOT / "api" / "v1" / "auth" / "router.py"
+
+
+def _parse(file_path: Path) -> ast.Module:
+    return ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
+
+
+def test_auth_router_module_contains_no_try_and_builds_no_http_exception():
+    # D-2: sin `try`/`except` y sin `HTTPException` construida a mano — las
+    # dos formas concretas de "el router no captura errores de dominio". Un
+    # change futuro que "arregle" el router agregando un `except` queda en
+    # rojo acá.
+    tree = _parse(AUTH_ROUTER_PATH)
+
+    assert not any(isinstance(node, ast.Try) for node in ast.walk(tree))
+
+    called_names = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "HTTPException" not in called_names
+
+
+def test_auth_router_module_has_no_logging_statements():
+    # D-11: ningún handler de este módulo registra nada -- el único dato que
+    # podría loguear es el email o la contraseña recibidos en texto plano.
+    tree = _parse(AUTH_ROUTER_PATH)
+    imported = get_imported_top_level_modules(AUTH_ROUTER_PATH)
+    assert "logging" not in imported
+
+    logging_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id in {"logging", "logger"}
+    ]
+    assert logging_calls == []
+
+
+async def test_login_401_does_not_log_the_email_and_register_422_does_not_log_the_password(caplog):
+    # D-11 desde el borde HTTP: ni el 401 de login ni el 422 de registro
+    # dejan un registro que contenga el dato sensible correspondiente.
+    import logging as logging_module
+
+    import httpx
+
+    from fastapi_bridge.main import create_app
+
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    caplog.set_level(logging_module.DEBUG)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        with caplog.at_level(logging_module.DEBUG):
+            login_response = await client.post(
+                "/api/v1/auth/login",
+                json={"email": "must-not-be-logged@test.com", "password": "whatever-1"},
+            )
+            register_response = await client.post(
+                "/api/v1/auth/register",
+                json={"email": "another@test.com", "password": "short"},
+            )
+
+    assert login_response.status_code == 401
+    assert register_response.status_code == 422
+    for record in caplog.records:
+        assert "must-not-be-logged@test.com" not in record.getMessage()
+        assert "short" not in record.getMessage()
+
+
+def test_auth_router_module_does_not_construct_its_own_service():
+    # El router sólo declara la dependencia (`Depends(get_auth_service)`) --
+    # no menciona ninguno de los símbolos con los que se compone el
+    # servicio, que es exactamente lo que `core/dependencies.py` encapsula.
+    source = AUTH_ROUTER_PATH.read_text(encoding="utf-8")
+    for forbidden_symbol in ("AuthUoW", "get_session_factory", "Settings("):
+        assert forbidden_symbol not in source
+
+
+async def test_get_auth_service_dependency_is_substitutable_by_the_route():
+    # Lo que necesitan CHANGE-06 y CHANGE-12: `app.dependency_overrides` para
+    # `get_auth_service` cambia efectivamente qué servicio usa la ruta.
+    import httpx
+
+    from fastapi_bridge.core.dependencies import get_auth_service
+    from fastapi_bridge.main import create_app
+    from fastapi_bridge.schemas.auth_schemas import TokenResponse, UserLogin, UserRegister
+
+    class _Double:
+        async def register(self, data: UserRegister) -> TokenResponse:
+            return TokenResponse(access_token="double-token", expires_in=1)
+
+        async def login(self, data: UserLogin) -> TokenResponse:
+            return TokenResponse(access_token="double-token", expires_in=1)
+
+    app = create_app()
+    app.dependency_overrides[get_auth_service] = lambda: _Double()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/auth/register", json={"email": "double@test.com", "password": "a-valid-password"}
+        )
+
+    assert response.json()["access_token"] == "double-token"

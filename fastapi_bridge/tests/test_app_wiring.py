@@ -86,14 +86,24 @@ def test_registration_does_not_depend_on_module_state():
         assert expected.issubset(set(app.exception_handlers.keys()))
 
 
-def test_route_surface_does_not_change_after_registering_handlers():
-    # Registrar manejadores no monta rutas de dominio: `GET /health` sigue
-    # siendo la única ruta expuesta.
+def test_route_surface_includes_health_and_auth_but_not_scan():
+    # CHANGE-05: registrar los manejadores no monta rutas por sí solo -- lo
+    # que monta el router de auth es `include_router` en `create_app()`. La
+    # superficie vigente es health + las dos rutas de auth; scan sigue sin
+    # montarse hasta CHANGE-12.
+    #
+    # Se lee desde `app.openapi()["paths"]`, no desde `app.routes`: esta
+    # versión de FastAPI resuelve `include_router` de forma perezosa (un
+    # único `_IncludedRouter` en `app.routes`, sin `.path` propio) y expande
+    # las rutas efectivas recién al construir el schema o al despachar una
+    # petición real. El schema OpenAPI es la superficie pública estable —
+    # inspeccionar el árbol de objetos internos de `app.routes` acoplaría el
+    # test a un detalle de implementación de esta versión del framework.
     app = create_app()
-    paths = {route.path for route in app.routes if hasattr(route, "path")}
+    paths = set(app.openapi()["paths"].keys())
     assert "/health" in paths
     domain_paths = {p for p in paths if p.startswith("/api/")}
-    assert domain_paths == set()
+    assert domain_paths == {"/api/v1/auth/register", "/api/v1/auth/login"}
 
 
 def test_health_endpoint_still_returns_200_with_its_exact_contract():
@@ -108,16 +118,16 @@ def test_health_endpoint_still_returns_200_with_its_exact_contract():
     assert response.json() == {"status": "ok", "service": "wasa-fastapi-bridge"}
 
 
-def test_unmounted_domain_route_returns_404_in_rfc7807_format():
-    # La superficie de rutas no cambia (7.4): la misma ausencia de router de
-    # auth que hoy da 404 sigue dando 404, pero ahora en formato RFC 7807 en
-    # vez del cuerpo por defecto de FastAPI/Starlette.
+def test_still_unmounted_scan_route_returns_404_in_rfc7807_format():
+    # CHANGE-05: el router de auth ya está montado, así que este ancla se
+    # traslada a scan -- el que sigue sin montarse hasta CHANGE-12 y sigue
+    # dando 404 en formato RFC 7807, no el cuerpo por defecto de Starlette.
     from fastapi.testclient import TestClient
 
     app = create_app()
     client = TestClient(app)
 
-    response = client.post("/api/v1/auth/register")
+    response = client.post("/api/v1/scan/start")
 
     assert response.status_code == 404
     body = response.json()

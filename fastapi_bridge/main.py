@@ -1,8 +1,12 @@
 """Punto de entrada ASGI del FastAPI Bridge.
 
-Expone únicamente `GET /health` en este estadio (CHANGE-00a). Los routers de
-dominio (`api/v1/auth`, `api/v1/scan`) existen como módulos pero no se montan
-acá todavía — ver D-8 en `openspec/changes/fastapi-bridge-scaffold/design.md`.
+Expone `GET /health` y, desde CHANGE-05, las dos rutas del router de auth
+(`POST /api/v1/auth/register`, `POST /api/v1/auth/login`) montadas vía
+`include_router(auth_router)` en `create_app()`. El router de `scan`
+(`api/v1/scan`) existe como módulo pero sigue sin montarse — llega en
+CHANGE-12. El contrato original de superficie acotada (D-8 de
+`openspec/changes/fastapi-bridge-scaffold/design.md`) queda reemplazado por
+el que fija `bridge-bootstrap` tras el delta de CHANGE-05.
 
 El `lifespan` ya no está vacío (CHANGE-01): en el arranque crea, de forma
 idempotente y acotada a `User.__table__`, la tabla `users` en `db_fuzzing`
@@ -30,6 +34,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 
+from fastapi_bridge.api.v1.auth.router import router as auth_router
 from fastapi_bridge.core.limiter import build_limiter
 from fastapi_bridge.core.settings import Settings, get_settings
 from fastapi_bridge.exceptions.domain import DomainError
@@ -128,6 +133,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         return HealthResponse(status="ok", service="wasa-fastapi-bridge")
+
+    # CHANGE-05 (D-12): sin `prefix` acá -- el router ya lo declara
+    # (`/api/v1/auth`) en `api/v1/auth/router.py`. El de scan (`api/v1/scan`)
+    # sigue sin montarse hasta CHANGE-12.
+    app.include_router(auth_router)
 
     return app
 

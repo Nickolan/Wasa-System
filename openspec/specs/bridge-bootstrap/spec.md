@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Establece la estructura fundamental del FastAPI Bridge como microservicio ASGI: cómo se arranca, cómo se configura, cómo se organizan sus capas, cómo se respetan las fronteras de importación entre ellas, y qué superficie de API expone en cada etapa de implementación.
+
+## Requirements
 
 ### Requirement: El servicio arranca como aplicación ASGI
 El FastAPI Bridge SHALL exponerse como una instancia ASGI importable en `fastapi_bridge.main:app`. El **import** del paquete SHALL seguir siendo libre de infraestructura: importar cualquier módulo del servicio no SHALL abrir conexiones de red ni de base de datos, ni requerir que PostgreSQL, n8n o Redis estén disponibles. El **arranque efectivo** del servidor, en cambio, ahora depende de la instancia PostgreSQL `db_fuzzing`, porque el ciclo de `lifespan` crea allí la tabla `users` (ver capacidad `user-persistence`). n8n y Redis siguen sin ser requisitos de arranque.
@@ -126,16 +130,24 @@ El proyecto SHALL declarar sus dependencias de runtime y de desarrollo en manifi
 - **WHEN** se lee `fastapi_bridge/requirements.txt`
 - **THEN** no declara `passlib`, cuya última publicación es anterior al proyecto y cuya integración con las versiones actuales de bcrypt está rota
 
-### Requirement: Superficie de API acotada al scaffold
-En este estadio el servicio SHALL exponer únicamente el endpoint de salud. Los routers de dominio existen como módulos pero NO SHALL estar montados en la aplicación hasta que sus changes correspondientes los implementen.
+### Requirement: Superficie de API expuesta por el servicio
+La aplicación SHALL exponer, además del endpoint de salud, las dos operaciones de autenticación (`POST /api/v1/auth/register` y `POST /api/v1/auth/login`), montando el router de auth desde `create_app()`. Los routers de dominio cuyos changes todavía no se implementaron —el de scan— SHALL seguir existiendo como módulos sin montar, y sus rutas SHALL seguir respondiendo `404`. Montar un router SHALL ser una decisión explícita del change que implementa sus operaciones, nunca un efecto colateral de otro change.
 
-#### Scenario: Sólo /health está expuesto
+#### Scenario: Rutas de aplicación registradas
 - **WHEN** se inspecciona `app.routes` descartando las rutas internas de FastAPI (`/docs`, `/openapi.json`, `/redoc`)
-- **THEN** la única ruta de aplicación registrada es `GET /health`
+- **THEN** las rutas de aplicación registradas son exactamente `GET /health`, `POST /api/v1/auth/register` y `POST /api/v1/auth/login`
 
-#### Scenario: Endpoints de dominio aún no disponibles
-- **WHEN** se hace `POST /api/v1/auth/register` o `POST /api/v1/scan/start`
-- **THEN** la respuesta es `404`, porque esos routers todavía no están montados
+#### Scenario: Los endpoints de auth están disponibles
+- **WHEN** se hace `POST /api/v1/auth/register` o `POST /api/v1/auth/login` con un cuerpo válido
+- **THEN** la respuesta no es `404`: ambas rutas están montadas y atendidas por el router de auth
+
+#### Scenario: El endpoint de scan aún no está disponible
+- **WHEN** se hace `POST /api/v1/scan/start`
+- **THEN** la respuesta es `404`, porque ese router todavía no está montado
+
+#### Scenario: El endpoint de salud conserva su contrato
+- **WHEN** se hace `GET /health` con el router de auth montado
+- **THEN** la respuesta sigue siendo `200` con body exactamente `{"status": "ok", "service": "wasa-fastapi-bridge"}`
 
 ### Requirement: El scaffold no toca la base de datos compartida
 El FastAPI Bridge SHALL convivir con el sistema WASA existente sobre la instancia PostgreSQL `db_fuzzing` sin alterar lo que no le pertenece. El servicio SHALL abrir conexión y emitir DDL **exclusivamente** para su propia tabla `users`; las tablas preexistentes `scans` y `vulnerabilities` NO SHALL ser declaradas, mapeadas, leídas, escritas ni migradas desde este servicio.

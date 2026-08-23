@@ -502,7 +502,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-05] `auth-router`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-03-01, HU-03-02, HU-03-07
 - **Scope**:
   - `api/v1/auth/router.py`: APIRouter con prefix `/api/v1/auth`
@@ -518,12 +518,23 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/07_flujos_principales.md` §Flujo 1: Registro de usuario, §Flujo 2: Login
   - `knowledge-base/06_funcionalidades.md` §HU-03-01, HU-03-02, HU-03-07
 - **Criterios de Aceptación**:
-  - [ ] POST /api/v1/auth/register con datos válidos: 201 + TokenResponse.
-  - [ ] POST /api/v1/auth/register con email duplicado: 409 RFC 7807.
-  - [ ] POST /api/v1/auth/register con password < 8 chars: 422 RFC 7807. (Corregido en CHANGE-07, D-2: el cuerpo es JSON válido que viola el schema declarado -- 422 "Unprocessable Entity", no 400 "Bad Request", que queda reservado para un cuerpo que ni siquiera es JSON parseable.)
-  - [ ] POST /api/v1/auth/login con credenciales correctas: 200 + TokenResponse.
-  - [ ] POST /api/v1/auth/login con credenciales incorrectas: 401 RFC 7807.
-  - [ ] Los endpoints aparecen en `/docs` con sus schemas correctos.
+  - [x] POST /api/v1/auth/register con datos válidos: 201 + TokenResponse.
+  - [x] POST /api/v1/auth/register con email duplicado: 409 RFC 7807.
+  - [x] POST /api/v1/auth/register con password < 8 chars: 422 RFC 7807. (Corregido en CHANGE-07, D-2: el cuerpo es JSON válido que viola el schema declarado -- 422 "Unprocessable Entity", no 400 "Bad Request", que queda reservado para un cuerpo que ni siquiera es JSON parseable.)
+  - [x] POST /api/v1/auth/login con credenciales correctas: 200 + TokenResponse.
+  - [x] POST /api/v1/auth/login con credenciales incorrectas: 401 RFC 7807.
+  - [x] Los endpoints aparecen en `/docs` con sus schemas correctos.
+- **Traspaso a CHANGE-06**: `get_auth_service` vive en `core/dependencies.py` (no bajo `api/`) —
+  `get_current_user` va en el mismo módulo. El `tokenUrl="/api/v1/auth/login"` que declare
+  `OAuth2PasswordBearer` ya apunta a una ruta real, pero ambas rutas reciben cuerpo JSON
+  (`UserRegister`/`UserLogin`), no `OAuth2PasswordRequestForm`: el botón "Authorize" de `/docs`
+  no va a funcionar contra ellas — es un detalle de la UI de la documentación, no un bug.
+- **Traspaso a CHANGE-16**: `UserRegister` declara `extra="forbid"` (CHANGE-02); el cliente debe
+  mandar exactamente `{email, password}`, nunca el objeto completo del formulario con
+  `confirmPassword`, o recibe 422 (ancla: `test_auth_router.py::
+  test_register_validation_rejections_return_422[extra-field-forbidden]`).
+- **Governance real aplicada**: MEDIUM (override explícito del usuario para el dominio Auth,
+  CHANGE-01..07 — ver `CLAUDE.md` del proyecto), no CRÍTICO como marca la tabla de arriba.
 
 ---
 
