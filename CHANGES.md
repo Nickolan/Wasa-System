@@ -613,7 +613,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 > (necesita `06` y `00d`).
 
 ### [CHANGE-08] `pydantic-scan-schemas`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` hecho
 - **Historias US**: HU-03-04, HU-03-05
 - **Scope**:
   - `schemas/scan_schemas.py`: `ScanRequest` (target_url HttpUrl, phpsessid str min=1,
@@ -627,11 +627,11 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/06_funcionalidades.md` §HU-02-01 a HU-02-05
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-02 a RN-WS-05
 - **Criterios de Aceptación**:
-  - [ ] `ScanRequest` con target_url sin http/https falla validación.
-  - [ ] `ScanRequest` con phpsessid vacío falla validación.
-  - [ ] `ScanRequest` con sqlmap_level=6 falla validación.
-  - [ ] `ScanRequest` sin sqlmap_level usa default=1.
-  - [ ] Tests unitarios de schemas pasan.
+  - [x] `ScanRequest` con target_url sin http/https falla validación. (`test_scan_request_rejects_target_url_without_scheme`)
+  - [x] `ScanRequest` con phpsessid vacío falla validación. (`test_scan_request_rejects_empty_phpsessid`)
+  - [x] `ScanRequest` con sqlmap_level=6 falla validación. (`test_scan_request_rejects_sqlmap_level_above_range`)
+  - [x] `ScanRequest` sin sqlmap_level usa default=1. (`test_scan_request_sqlmap_level_defaults_to_one_when_omitted`)
+  - [x] Tests unitarios de schemas pasan. (`fastapi_bridge/tests/test_scan_schemas.py`, 42 tests, todos verdes)
 
 ---
 
