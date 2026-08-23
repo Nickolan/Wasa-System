@@ -12,9 +12,11 @@ fuera de `scan_schemas.py`).
 
 `DomainError` es la base común. CHANGE-04 (`InvalidCredentialsError`) y
 CHANGE-11 agregan sus propias excepciones de dominio a este módulo en vez de
-reabrir la discusión de dónde ubicarlas. CHANGE-07 puede registrar un único
-`exception_handler` sobre `DomainError` en `main.py` en vez de uno por cada
-subclase concreta.
+reabrir la discusión de dónde ubicarlas. CHANGE-07 registra un único
+`exception_handler` sobre `DomainError` en `main.py`
+(`domain_error_handler`, con la tabla `_DOMAIN_ERROR_MAP` declarada en
+`exceptions/handlers.py`) en vez de uno por cada subclase concreta: agregar
+un error de dominio nuevo es una fila en esa tabla, no un handler nuevo.
 """
 
 
@@ -28,9 +30,10 @@ class EmailAlreadyExistsError(DomainError):
     `UserRepository.create` la lanza al traducir el `IntegrityError` que
     produce la violación de la constraint `UNIQUE` de `email` (ver
     `repositories/user_repository.py`, D-3). Conserva el email **normalizado**
-    (el valor que realmente colisionó en el motor) como atributo, para que
-    CHANGE-07 pueda componer el `detail` del RFC 7807 sin volver a consultar
-    la base ni parsear el mensaje de la excepción.
+    (el valor que realmente colisionó en el motor) como atributo, que
+    `domain_error_handler` (CHANGE-07) usa para componer el `detail` del
+    RFC 7807 sin volver a consultar la base ni parsear el mensaje de la
+    excepción.
     """
 
     def __init__(self, email: str) -> None:

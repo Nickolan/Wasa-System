@@ -520,7 +520,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 - **Criterios de Aceptación**:
   - [ ] POST /api/v1/auth/register con datos válidos: 201 + TokenResponse.
   - [ ] POST /api/v1/auth/register con email duplicado: 409 RFC 7807.
-  - [ ] POST /api/v1/auth/register con password < 8 chars: 400 RFC 7807.
+  - [ ] POST /api/v1/auth/register con password < 8 chars: 422 RFC 7807. (Corregido en CHANGE-07, D-2: el cuerpo es JSON válido que viola el schema declarado -- 422 "Unprocessable Entity", no 400 "Bad Request", que queda reservado para un cuerpo que ni siquiera es JSON parseable.)
   - [ ] POST /api/v1/auth/login con credenciales correctas: 200 + TokenResponse.
   - [ ] POST /api/v1/auth/login con credenciales incorrectas: 401 RFC 7807.
   - [ ] Los endpoints aparecen en `/docs` con sus schemas correctos.
