@@ -811,7 +811,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-14] `auth-zod-schemas`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-06-02, HU-06-03
 - **Scope**:
   - `src/entities/user/model/types.ts`: `UserRegister` (email, password, confirmPassword),
@@ -827,10 +827,10 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/06_funcionalidades.md` §HU-06-02, HU-06-03
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-15
 - **Criterios de Aceptación**:
-  - [ ] `loginSchema.parse({ email: "not-email", password: "x" })` lanza ZodError.
-  - [ ] `registerSchema.parse({ ..., password: "1234567", confirmPassword: "1234567" })` lanza ZodError (< 8 chars).
-  - [ ] `registerSchema.parse({ ..., password: "pass1234", confirmPassword: "diferente" })` lanza ZodError.
-  - [ ] `tsc --noEmit` sin errores en `entities/user/`.
+  - [x] `loginSchema.parse({ email: "not-email", password: "x" })` lanza ZodError.
+  - [x] `registerSchema.parse({ ..., password: "1234567", confirmPassword: "1234567" })` lanza ZodError (< 8 chars).
+  - [x] `registerSchema.parse({ ..., password: "pass1234", confirmPassword: "diferente" })` lanza ZodError.
+  - [x] `tsc --noEmit` sin errores en `entities/user/`.
 - **⚠️ Paridad obligatoria con `schemas/auth_schemas.py` (CHANGE-02)**: `registerSchema`
   DEBE replicar exactamente las mismas reglas que `UserRegister` del backend —
   mismo mínimo de 8 caracteres, **mismo techo de 72 bytes UTF-8** en la contraseña
@@ -839,6 +839,21 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   en la KB — es una decisión de CHANGE-02 (D-2) — y si este change no lo replica, el
   formulario deja escribir una contraseña que el backend rechaza con un 422 opaco sin
   explicación visible en el form (R-2 en `openspec/changes/auth-pydantic-schemas/design.md`).
+- **Nota de implementación**: la slice quedó con un cuarto módulo,
+  `src/entities/user/model/passwordRules.ts` (`PASSWORD_MIN_LENGTH`, `PASSWORD_MAX_BYTES`,
+  `utf8ByteLength`, `passwordWithByteCeiling`), compartido por `loginSchema` y
+  `registerSchema` para no repetir el 8 ni el 72 en dos archivos (D-2), y un
+  `src/entities/user/index.ts` como API pública de la slice (D-8) — cuatro archivos más
+  uno, en vez de los tres listados en el scope original. Se agregó también
+  `UserRegisterRequest = Omit<UserRegister, 'confirmPassword'>` para que la confirmación
+  no viaje al Bridge (`extra="forbid"`). Paridad con `fastapi_bridge/schemas/auth_schemas.py`
+  verificada por un test que lee el módulo Python real (`tests/auth-schemas-parity.test.ts`,
+  D-7), no por un literal repetido. Se detectó y corrigió un defecto en el guard de tipo de
+  D-6 propuesto en `design.md`: la rama negativa de `Equals<A,B>` resolvía a `never`, que
+  satisface trivialmente cualquier restricción genérica y dejaba pasar sin error cualquier
+  divergencia entre schema y tipo; se corrigió a `false` (verificado con `tsc` antes y
+  después del fix). Suite final: 178 tests (baseline 137 + 41 nuevos), `tsc -b`, `oxlint` y
+  `npm run build` en verde.
 
 ---
 
