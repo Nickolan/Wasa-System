@@ -539,27 +539,41 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-06] `jwt-dependency`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-03-03
 - **Scope**:
-  - `core/dependencies.py`: `oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")`
-  - `get_current_user(token: str = Depends(oauth2_scheme)) -> str`: llama
-    `security.decode_access_token(token)`; si `token_data.email is None` lanza HTTPException 401;
-    retorna el email del usuario autenticado
-  - Esta dependency se inyecta en `/api/v1/scan/start` para protegerlo
+  - `core/dependencies.py`: `oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)`
+    (D-1: `auto_error=False`, no el default — ver docstring del módulo y `design.md`)
+  - `get_current_user(token: str | None = Depends(oauth2_scheme), settings: Settings = Depends(get_settings)) -> str`:
+    llama `security.decode_access_token(token, settings)`; si el token es `None` o
+    `token_data.email is None` lanza `HTTPException(401)` RFC 7807 con `WWW-Authenticate`
+    (RFC 6750); retorna el email del usuario autenticado. No consulta la base de datos (D-5).
+  - `CurrentUserEmail = Annotated[str, Depends(get_current_user)]`: alias que CHANGE-12 debe
+    usar para proteger `/api/v1/scan/start` (`user_email: CurrentUserEmail`, nunca
+    `Depends(oauth2_scheme)`, que devuelve el token sin validar)
+  - No se monta ninguna ruta en este change: `/api/v1/scan/start` sigue en 404 hasta CHANGE-12
 - **Dependencias**: CHANGE-04
 - **Duración estimada**: 1 hora
-- **Governance**: CRITICO
+- **Governance**: CRITICO en este índice; bajado a **MEDIO** por override explícito del
+  usuario para el dominio Auth completo (CHANGE-01..07) — ver `CLAUDE.md` del proyecto.
 - **Leer antes**:
   - `knowledge-base/03_actores_y_roles.md` §RBAC — Matriz de permisos
   - `knowledge-base/08_arquitectura_propuesta.md` §Seguridad
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-11
 - **Criterios de Aceptación**:
-  - [ ] Request con JWT válido en header Authorization: `get_current_user` retorna email.
-  - [ ] Request sin header Authorization: 401 con RFC 7807.
-  - [ ] Request con JWT malformado: 401 con RFC 7807.
-  - [ ] Request con JWT expirado: 401 con RFC 7807.
-  - [ ] El email retornado coincide con el "sub" del JWT.
+  - [x] Request con JWT válido en header Authorization: `get_current_user` retorna email.
+  - [x] Request sin header Authorization: 401 con RFC 7807.
+  - [x] Request con JWT malformado: 401 con RFC 7807.
+  - [x] Request con JWT expirado: 401 con RFC 7807.
+  - [x] El email retornado coincide con el "sub" del JWT.
+- **Traspaso a CHANGE-12** (`POST /api/v1/scan/start`): usar `user_email: CurrentUserEmail`,
+  no `Depends(oauth2_scheme)`; sustituir `get_current_user` con `app.dependency_overrides` en
+  los tests de `/scan/start`, mismo patrón que `test_dependency_override_lets_the_probe_respond_without_any_authorization_header`
+  en `fastapi_bridge/tests/test_auth_dependencies.py`; el `401` sale con `type: about:blank`
+  (D-2) y desafío `WWW-Authenticate` (D-3).
+- **Traspaso a CHANGE-17** (interceptor de Axios): distinguir "sin sesión" de "sesión vencida"
+  por el parámetro `invalid_token` del desafío `WWW-Authenticate`, no por el cuerpo — que es
+  idéntico byte a byte en los cuatro rechazos con token presente (D-3, D-4).
 
 ---
 

@@ -187,6 +187,106 @@ def test_auth_router_module_does_not_construct_its_own_service():
         assert forbidden_symbol not in source
 
 
+# ---------------------------------------------------------------------------
+# CHANGE-06, grupo 7 -- anclajes estructurales de get_current_user (D-10, D-12)
+# ---------------------------------------------------------------------------
+
+DEPENDENCIES_PATH = FASTAPI_BRIDGE_ROOT / "core" / "dependencies.py"
+
+
+def _get_current_user_function_def(tree: ast.Module) -> ast.AsyncFunctionDef:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "get_current_user":
+            return node
+    raise AssertionError("get_current_user no encontrado en core/dependencies.py")
+
+
+def test_dependencies_module_does_not_import_jose_and_has_no_try():
+    # 7.1: ancla de D-10 (sin captura de excepciones -- decode_access_token
+    # nunca lanza) y D-12 (sin criptografía propia -- ninguna librería de JWT).
+    tree = _parse(DEPENDENCIES_PATH)
+
+    assert "jose" not in get_imported_top_level_modules(DEPENDENCIES_PATH)
+    assert not any(isinstance(node, ast.Try) for node in ast.walk(tree))
+
+
+def test_get_current_user_body_does_not_reference_persistence_symbols():
+    # 7.2: el módulo sí importa get_session_factory (para get_auth_service),
+    # así que el aserto es sobre el CUERPO de get_current_user, no sobre los
+    # imports del archivo (D-5: sin sesión, Unit of Work ni repositorio).
+    tree = _parse(DEPENDENCIES_PATH)
+    function_def = _get_current_user_function_def(tree)
+
+    referenced_names = {
+        node.id for node in ast.walk(function_def) if isinstance(node, ast.Name)
+    } | {
+        node.attr for node in ast.walk(function_def) if isinstance(node, ast.Attribute)
+    }
+    forbidden = {"AuthUoW", "get_session_factory", "UserRepository", "session", "Session"}
+    assert referenced_names.isdisjoint(forbidden)
+
+
+def test_get_current_user_does_not_log_and_does_not_call_get_settings_in_its_body():
+    # 7.3: ancla "sin registro del token" y "la configuración es un
+    # parámetro inyectado" desde el código -- get_settings sólo se declara
+    # por Depends(...) en la firma, nunca se invoca dentro del cuerpo.
+    imported = get_imported_top_level_modules(DEPENDENCIES_PATH)
+    assert "logging" not in imported
+
+    tree = _parse(DEPENDENCIES_PATH)
+    function_def = _get_current_user_function_def(tree)
+
+    logging_calls = [
+        node
+        for node in ast.walk(function_def)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id in {"logging", "logger"}
+    ]
+    assert logging_calls == []
+
+    get_settings_calls = [
+        node
+        for node in ast.walk(function_def)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "get_settings"
+    ]
+    assert get_settings_calls == []
+
+
+def test_get_current_user_body_has_no_string_literals_beyond_the_header_name():
+    # 7.4: los dos `detail` y las dos formas del desafío son constantes de
+    # módulo -- el cuerpo de la función no contiene ningún literal de string
+    # propio más allá del nombre del header "WWW-Authenticate" (la clave del
+    # dict de `headers=`), que no es información sensible ni un mensaje.
+    tree = _parse(DEPENDENCIES_PATH)
+    function_def = _get_current_user_function_def(tree)
+
+    # El primer statement es el docstring: se excluye explícitamente, no es
+    # parte del comportamiento en tiempo de ejecución.
+    body_without_docstring = function_def.body[1:] if ast.get_docstring(function_def) else function_def.body
+
+    string_literals = {
+        node.value
+        for statement in body_without_docstring
+        for node in ast.walk(statement)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    assert string_literals <= {"WWW-Authenticate"}
+
+
+# CHANGE-06, 7.5: se evaluó agregar `("core", "jose")` a `LAYER_IMPORT_RULES`
+# para anclar D-12 con el mismo mecanismo que el resto de las fronteras. Se
+# descarta por el mismo motivo ya documentado arriba (CHANGE-07, 8.6) para
+# `exceptions/`: la regla aplica por **directorio completo y recursivo**, y
+# `core/security.py` -- en el mismo directorio que `core/dependencies.py` --
+# **debe** importar `jose`: es la superficie criptográfica del servicio. Una
+# fila de directorio rompería `security.py`. El ancla correcta es la de
+# arriba, a nivel de módulo puntual
+# (`test_dependencies_module_does_not_import_jose_and_has_no_try`), que
+# verifica `core/dependencies.py` sin tocar `core/security.py`.
+
+
 async def test_get_auth_service_dependency_is_substitutable_by_the_route():
     # Lo que necesitan CHANGE-06 y CHANGE-12: `app.dependency_overrides` para
     # `get_auth_service` cambia efectivamente qué servicio usa la ruta.
