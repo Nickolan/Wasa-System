@@ -70,7 +70,7 @@ describe('cada pieza de dominio aparece únicamente en el change que la implemen
     expect(files).toEqual(['authStore.ts'])
   })
 
-  it.each(['src/entities', 'src/shared/ui', 'src/shared/api', 'src/features'])(
+  it.each(['src/shared/ui', 'src/shared/api', 'src/features'])(
     '%s contains only .gitkeep',
     (relativeDir) => {
       const files = listFilesRecursively(path.join(projectRoot, relativeDir))
@@ -78,6 +78,30 @@ describe('cada pieza de dominio aparece únicamente en el change que la implemen
       expect(nonGitkeep).toEqual([])
     },
   )
+})
+
+describe('src/entities quedó poblado por la slice user (CHANGE-14, D-9)', () => {
+  it('src/entities/.gitkeep ya no existe — la capa dejó de estar vacía', () => {
+    expect(existsSync(path.join(projectRoot, 'src/entities/.gitkeep'))).toBe(false)
+  })
+
+  it('src/entities/ contiene únicamente la slice user, sin otras slices', () => {
+    const entries = readdirSync(path.join(projectRoot, 'src/entities'))
+    expect(entries).toEqual(['user'])
+  })
+
+  it('src/entities/user/ contiene exactamente los módulos declarados por el design (D-2, D-8)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/entities/user')).sort()
+    expect(files).toEqual(
+      [
+        'index.ts',
+        path.join('model', 'loginSchema.ts'),
+        path.join('model', 'passwordRules.ts'),
+        path.join('model', 'registerSchema.ts'),
+        path.join('model', 'types.ts'),
+      ].sort(),
+    )
+  })
 })
 
 describe('every .gitkeep is annotated with the change that will populate it (D-10)', () => {
