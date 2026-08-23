@@ -366,38 +366,62 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-03] `user-repository`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-03-01, HU-03-02
 - **Scope**:
   - `repositories/user_repository.py`: clase `UserRepository`, constructor recibe
     `session: AsyncSession`
-  - Método async `get_by_email(email: str) -> User | None`
+  - Método async `get_by_email(email: str) -> User | None`: normaliza el email a
+    lowercase antes de consultar (ver Nota de implementación, D-4)
   - Método async `create(email: str, hashed_password: str) -> User`: normaliza email a
     lowercase antes de guardar; si hay IntegrityError (email duplicado) lanza
     `EmailAlreadyExistsError`
 - **Dependencias**: CHANGE-01, CHANGE-02
 - **Duración estimada**: 1 hora
-- **Governance**: CRITICO
+- **Governance**: MEDIO
 - **Leer antes**:
   - `knowledge-base/04_modelo_de_datos.md` §users
   - `knowledge-base/08_arquitectura_propuesta.md` §Patrones (Repository)
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-13
 - **Criterios de Aceptación**:
-  - [ ] `get_by_email` retorna el User si existe, None si no.
-  - [ ] `create` con email nuevo: INSERT exitoso, retorna User con id poblado.
-  - [ ] `create` con email duplicado: lanza `EmailAlreadyExistsError`.
-  - [ ] El email se guarda en lowercase (ej: "USER@TEST.COM" → "user@test.com").
-  - [ ] El repository no conoce nada de FastAPI ni de passlib.
+  - [x] `get_by_email` retorna el User si existe, None si no.
+  - [x] `create` con email nuevo: INSERT exitoso, retorna User con id poblado.
+  - [x] `create` con email duplicado: lanza `EmailAlreadyExistsError`.
+  - [x] El email se guarda en lowercase (ej: "USER@TEST.COM" → "user@test.com").
+  - [x] El repository no conoce nada de FastAPI ni de passlib.
+- **Nota de implementación**: cuatro desviaciones/extensiones respecto del scope original
+  de arriba, todas aprobadas por el usuario en el checkpoint de governance de `tasks.md`
+  1.3 (ver `openspec/changes/user-repository/design.md` D-1, D-3, D-4, D-5, D-6):
+  1. **Normalización de email simétrica**: el roadmap solo pedía normalizar en `create`;
+     `get_by_email` también normaliza con la misma función (`_normalize_email`, definida
+     una sola vez). Sin esto, un usuario registrado con mayúsculas quedaría inalcanzable
+     al loguearse con la misma capitalización que usó al registrarse (D-4, R-1).
+  2. **`EmailAlreadyExistsError` vive en un módulo nuevo, `exceptions/domain.py`**, con
+     una base `DomainError` de la que hereda. El roadmap no especificaba ubicación; se
+     descartó tanto el módulo del repositorio (dependencia invertida hacia la capa web)
+     como `exceptions/handlers.py` (arrastraría Starlette/slowapi a una capa que debe ser
+     reutilizable fuera del framework web) (D-1).
+  3. **`create` hace `flush()` + `refresh()`, nunca `commit()`/`rollback()`**: el límite
+     transaccional (confirmar en el camino feliz, deshacer ante excepción) queda a cargo
+     de la `AuthUoW` de CHANGE-04, que es la dueña del alcance completo de la operación de
+     negocio (D-5, R-4 — ver traspaso anotado en CHANGE-04 más abajo).
+  4. **`aiosqlite` como dependencia de desarrollo nueva** (`requirements-dev.txt`, no
+     `requirements.txt`): primera dependencia nueva desde CHANGE-00a, necesaria para
+     ejercitar el repositorio contra un motor async real (incluida la violación de
+     unicidad real, no simulada contra un doble) (D-6).
+  5. **Corrección de governance**: esta sección figuraba como **CRITICO**; el `CLAUDE.md`
+     del proyecto baja explícitamente todo el dominio Auth (CHANGE-01..07) a **MEDIO** por
+     decisión del usuario — la misma corrección ya aplicada en CHANGE-02.
 
 ---
 
 ### [CHANGE-04] `auth-service`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` hecho (2026-08-23)
 - **Historias US**: HU-03-01, HU-03-02
 - **Scope**:
-  - `core/security.py`: `hash_password(plain) -> str` (bcrypt via passlib CryptContext),
-    `verify_password(plain, hashed) -> bool`, `create_access_token(data, expires_delta) -> str`
-    (python-jose, HS256, clave = settings.JWT_SECRET), `decode_access_token(token) -> TokenData`
+  - `core/security.py`: `hash_password(plain) -> str` (bcrypt directo, ver nota R-1 abajo),
+    `verify_password(plain, hashed) -> bool`, `create_access_token(data, expires_delta, settings) -> str`
+    (python-jose, HS256, clave = settings.JWT_SECRET), `decode_access_token(token, settings) -> TokenData`
     (retorna TokenData con email=None si el token es inválido o expirado)
   - `services/auth_service.py`: clase `AuthService` (constructor recibe `uow: AuthUoW`),
     método async `register(data: UserRegister) -> TokenResponse`, método async
@@ -405,34 +429,80 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
     contraseña no coincide, sin distinguir cuál falló — evita enumeración de usuarios)
 - **Dependencias**: CHANGE-03
 - **Duración estimada**: 1.5 horas
-- **Governance**: CRITICO
+- **Governance**: MEDIO (corrección — ver nota de implementación 5 abajo; el `CLAUDE.md` del
+  proyecto baja explícitamente todo el dominio Auth CHANGE-01..07 a MEDIO por decisión del
+  usuario, misma corrección aplicada en CHANGE-02/CHANGE-03)
 - **Leer antes**:
   - `knowledge-base/08_arquitectura_propuesta.md` §Seguridad
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-12, RN-WS-14
   - `knowledge-base/03_actores_y_roles.md`
 - **Criterios de Aceptación**:
-  - [ ] `hash_password("secret")` retorna string bcrypt (starts with "$2b$").
-  - [ ] `verify_password("secret", hash)` retorna True.
-  - [ ] `verify_password("wrong", hash)` retorna False.
-  - [ ] `create_access_token({"sub": "a@b.com"}, timedelta(hours=24))` retorna JWT válido.
-  - [ ] `decode_access_token(valid_jwt)` retorna TokenData con email correcto.
-  - [ ] `decode_access_token(expired_jwt)` retorna TokenData(email=None).
-  - [ ] `AuthService.login` con credenciales inválidas lanza `InvalidCredentialsError`.
-  - [ ] `AuthService.register` con email duplicado lanza `EmailAlreadyExistsError`.
-- **⚠️ Hallazgo bloqueante (R-1, descubierto en CHANGE-02)**: `passlib 1.7.4` (declarado
-  en `requirements.txt` como `passlib[bcrypt]>=1.7`, sin techo) está roto contra
-  `bcrypt 5.0.0` (la versión que resuelve el entorno actual): `passlib/handlers/bcrypt.py`
-  lee `bcrypt.__about__.__version__`, atributo eliminado en bcrypt ≥ 4.1, y
-  `CryptContext(schemes=["bcrypt"]).hash(...)` falla. Este change debe arrancar
-  decidiendo entre (a) fijar `bcrypt<4.1` en `requirements.txt`, o (b) usar la librería
-  `bcrypt` directamente y sacar `passlib` (recomendación corriente: passlib no tiene
-  release desde 2020). Ver `openspec/changes/auth-pydantic-schemas/design.md` §Contexto
-  y R-1.
+  - [x] `hash_password("secret")` retorna string bcrypt (starts with "$2b$").
+  - [x] `verify_password("secret", hash)` retorna True.
+  - [x] `verify_password("wrong", hash)` retorna False.
+  - [x] `create_access_token({"sub": "a@b.com"}, timedelta(hours=24), settings)` retorna JWT válido.
+  - [x] `decode_access_token(valid_jwt, settings)` retorna TokenData con email correcto.
+  - [x] `decode_access_token(expired_jwt, settings)` retorna TokenData(email=None).
+  - [x] `AuthService.login` con credenciales inválidas lanza `InvalidCredentialsError`.
+  - [x] `AuthService.register` con email duplicado lanza `EmailAlreadyExistsError`.
+- **✅ R-1 cerrado (2026-08-22, checkpoint de governance MEDIUM)**: se eligió la opción (b) —
+  usar la librería `bcrypt` directamente y sacar `passlib` de `requirements.txt`
+  (`passlib[bcrypt]>=1.7` → `bcrypt>=4.1`). Reproducido en este repo antes de decidir:
+  `bcrypt 5.0.0`, `passlib 1.7.4` → `AttributeError: module 'bcrypt' has no attribute
+  '__about__'` (trapped por passlib) seguido de `ValueError: password cannot be longer
+  than 72 bytes` al hashear `"secret"` — evidencia de que passlib degrada a una ruta de
+  código incorrecta. `bcrypt 5.0.0` ya estaba instalado como dependencia transitiva de
+  `passlib[bcrypt]`, así que el cambio de manifiesto no instaló nada nuevo, solo dejó de
+  instalar `passlib`. `core/security.py` usa `bcrypt.hashpw`/`bcrypt.gensalt`/
+  `bcrypt.checkpw` directamente. La fila `("repositories", "passlib")` de
+  `tests/test_layer_boundaries.py` se conserva (costo cero, sigue siendo cierta) y se le
+  suma `("repositories", "bcrypt")` + `("services", "bcrypt"/"passlib"/"jose")`.
+- **✅ Traspaso de CHANGE-03 (`user-repository`, D-5, R-4, R-7) — cumplido**: `AuthUoW`
+  (`uow/auth_unit_of_work.py`) hace `commit()` en `__aexit__` cuando el bloque termina sin
+  excepción y `rollback()` ante cualquier excepción, incluidas las de dominio
+  (`EmailAlreadyExistsError`), cerrando la sesión siempre. `AuthService.register` **no**
+  antepone un chequeo con `get_by_email` — anclado por test AST (`test_register_does_not_
+  call_get_by_email`, 7.9) — la garantía de unicidad la da la constraint del motor.
+- **Notas de implementación**:
+  1. **`AuthService.register`/`login` obtienen `Settings` vía `get_settings()` interno**, no
+     por parámetro: a diferencia de `create_access_token`/`decode_access_token` (D-5 de
+     `design.md`, que sí reciben `Settings` explícito por ser funciones puras de
+     `core/security.py`), `AuthService` recibe únicamente la `AuthUoW` por constructor —tal
+     como especifica esta sección y la spec `auth-session`— y usa el mismo `get_settings()`
+     cacheado que el resto del Bridge. Desviación documentada de la firma abreviada de este
+     documento (`create_access_token(data, expires_delta)`, sin `settings`): la firma real es
+     `create_access_token(data, expires_delta, settings)` (D-5).
+  2. **El hashing y la verificación se descargan a thread pool** (`anyio.to_thread.run_sync`)
+     desde el primer commit de `AuthService`, no como optimización posterior (D-3): bcrypt con
+     coste 12 es ~250-400ms de CPU, y sin el offload un solo registro concurrente serializaría
+     todas las peticiones del servicio.
+  3. **Hash señuelo para indistinguibilidad temporal del 401** (D-8): `_DUMMY_PASSWORD_HASH`,
+     constante de módulo derivada una sola vez al importar `services/auth_service.py`. Cuando
+     `login` no encuentra el email, igual verifica contra el señuelo y descarta el resultado,
+     para que el camino "email inexistente" pague el mismo coste de CPU que "contraseña
+     incorrecta" — sin esto, la latencia por sí sola permite enumerar usuarios.
+  4. **`InvalidCredentialsError` se agregó a `exceptions/domain.py`** (junto a
+     `EmailAlreadyExistsError`), sin atributos: a diferencia de la excepción de email
+     duplicado, no lleva el email consultado (D-11), para que CHANGE-07 no pueda interpolarlo
+     en el `detail` del RFC 7807 por accidente.
+  5. **Corrección de governance**: esta sección figuraba como **CRITICO**; el `CLAUDE.md` del
+     proyecto baja explícitamente todo el dominio Auth (CHANGE-01..07) a **MEDIO** por decisión
+     del usuario — misma corrección ya aplicada en CHANGE-02/CHANGE-03.
+  6. **Nota documental (Open Question 4 de `design.md`)**: `knowledge-base/08_arquitectura_
+     propuesta.md` §Seguridad dice "Password hashing: bcrypt vía passlib, rounds=12" —
+     desactualizado tras resolver R-1 con la opción (b). No se reescribe la KB dentro de este
+     change (mismo precedente que la nota 8.1 de CHANGE-02); queda anotado acá para quien la
+     actualice.
+- **Traspaso a CHANGE-05/CHANGE-06/CHANGE-07**: `EmailAlreadyExistsError` → mapear a 409;
+  `InvalidCredentialsError` → mapear a 401; `decode_access_token` devuelve siempre
+  `TokenData(email=None)` ante cualquier token inválido/expirado/manipulado (nunca lanza), que
+  es la base sobre la que `get_current_user` (CHANGE-06) puede responder 401 sin un `try/except`
+  propio.
 
 ---
 
 ### [CHANGE-05] `auth-router`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-03-01, HU-03-02, HU-03-07
 - **Scope**:
   - `api/v1/auth/router.py`: APIRouter con prefix `/api/v1/auth`
@@ -448,37 +518,62 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/07_flujos_principales.md` §Flujo 1: Registro de usuario, §Flujo 2: Login
   - `knowledge-base/06_funcionalidades.md` §HU-03-01, HU-03-02, HU-03-07
 - **Criterios de Aceptación**:
-  - [ ] POST /api/v1/auth/register con datos válidos: 201 + TokenResponse.
-  - [ ] POST /api/v1/auth/register con email duplicado: 409 RFC 7807.
-  - [ ] POST /api/v1/auth/register con password < 8 chars: 400 RFC 7807.
-  - [ ] POST /api/v1/auth/login con credenciales correctas: 200 + TokenResponse.
-  - [ ] POST /api/v1/auth/login con credenciales incorrectas: 401 RFC 7807.
-  - [ ] Los endpoints aparecen en `/docs` con sus schemas correctos.
+  - [x] POST /api/v1/auth/register con datos válidos: 201 + TokenResponse.
+  - [x] POST /api/v1/auth/register con email duplicado: 409 RFC 7807.
+  - [x] POST /api/v1/auth/register con password < 8 chars: 422 RFC 7807. (Corregido en CHANGE-07, D-2: el cuerpo es JSON válido que viola el schema declarado -- 422 "Unprocessable Entity", no 400 "Bad Request", que queda reservado para un cuerpo que ni siquiera es JSON parseable.)
+  - [x] POST /api/v1/auth/login con credenciales correctas: 200 + TokenResponse.
+  - [x] POST /api/v1/auth/login con credenciales incorrectas: 401 RFC 7807.
+  - [x] Los endpoints aparecen en `/docs` con sus schemas correctos.
+- **Traspaso a CHANGE-06**: `get_auth_service` vive en `core/dependencies.py` (no bajo `api/`) —
+  `get_current_user` va en el mismo módulo. El `tokenUrl="/api/v1/auth/login"` que declare
+  `OAuth2PasswordBearer` ya apunta a una ruta real, pero ambas rutas reciben cuerpo JSON
+  (`UserRegister`/`UserLogin`), no `OAuth2PasswordRequestForm`: el botón "Authorize" de `/docs`
+  no va a funcionar contra ellas — es un detalle de la UI de la documentación, no un bug.
+- **Traspaso a CHANGE-16**: `UserRegister` declara `extra="forbid"` (CHANGE-02); el cliente debe
+  mandar exactamente `{email, password}`, nunca el objeto completo del formulario con
+  `confirmPassword`, o recibe 422 (ancla: `test_auth_router.py::
+  test_register_validation_rejections_return_422[extra-field-forbidden]`).
+- **Governance real aplicada**: MEDIUM (override explícito del usuario para el dominio Auth,
+  CHANGE-01..07 — ver `CLAUDE.md` del proyecto), no CRÍTICO como marca la tabla de arriba.
 
 ---
 
 ### [CHANGE-06] `jwt-dependency`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-03-03
 - **Scope**:
-  - `core/dependencies.py`: `oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")`
-  - `get_current_user(token: str = Depends(oauth2_scheme)) -> str`: llama
-    `security.decode_access_token(token)`; si `token_data.email is None` lanza HTTPException 401;
-    retorna el email del usuario autenticado
-  - Esta dependency se inyecta en `/api/v1/scan/start` para protegerlo
+  - `core/dependencies.py`: `oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)`
+    (D-1: `auto_error=False`, no el default — ver docstring del módulo y `design.md`)
+  - `get_current_user(token: str | None = Depends(oauth2_scheme), settings: Settings = Depends(get_settings)) -> str`:
+    llama `security.decode_access_token(token, settings)`; si el token es `None` o
+    `token_data.email is None` lanza `HTTPException(401)` RFC 7807 con `WWW-Authenticate`
+    (RFC 6750); retorna el email del usuario autenticado. No consulta la base de datos (D-5).
+  - `CurrentUserEmail = Annotated[str, Depends(get_current_user)]`: alias que CHANGE-12 debe
+    usar para proteger `/api/v1/scan/start` (`user_email: CurrentUserEmail`, nunca
+    `Depends(oauth2_scheme)`, que devuelve el token sin validar)
+  - No se monta ninguna ruta en este change: `/api/v1/scan/start` sigue en 404 hasta CHANGE-12
 - **Dependencias**: CHANGE-04
 - **Duración estimada**: 1 hora
-- **Governance**: CRITICO
+- **Governance**: CRITICO en este índice; bajado a **MEDIO** por override explícito del
+  usuario para el dominio Auth completo (CHANGE-01..07) — ver `CLAUDE.md` del proyecto.
 - **Leer antes**:
   - `knowledge-base/03_actores_y_roles.md` §RBAC — Matriz de permisos
   - `knowledge-base/08_arquitectura_propuesta.md` §Seguridad
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-11
 - **Criterios de Aceptación**:
-  - [ ] Request con JWT válido en header Authorization: `get_current_user` retorna email.
-  - [ ] Request sin header Authorization: 401 con RFC 7807.
-  - [ ] Request con JWT malformado: 401 con RFC 7807.
-  - [ ] Request con JWT expirado: 401 con RFC 7807.
-  - [ ] El email retornado coincide con el "sub" del JWT.
+  - [x] Request con JWT válido en header Authorization: `get_current_user` retorna email.
+  - [x] Request sin header Authorization: 401 con RFC 7807.
+  - [x] Request con JWT malformado: 401 con RFC 7807.
+  - [x] Request con JWT expirado: 401 con RFC 7807.
+  - [x] El email retornado coincide con el "sub" del JWT.
+- **Traspaso a CHANGE-12** (`POST /api/v1/scan/start`): usar `user_email: CurrentUserEmail`,
+  no `Depends(oauth2_scheme)`; sustituir `get_current_user` con `app.dependency_overrides` en
+  los tests de `/scan/start`, mismo patrón que `test_dependency_override_lets_the_probe_respond_without_any_authorization_header`
+  en `fastapi_bridge/tests/test_auth_dependencies.py`; el `401` sale con `type: about:blank`
+  (D-2) y desafío `WWW-Authenticate` (D-3).
+- **Traspaso a CHANGE-17** (interceptor de Axios): distinguir "sin sesión" de "sesión vencida"
+  por el parámetro `invalid_token` del desafío `WWW-Authenticate`, no por el cuerpo — que es
+  idéntico byte a byte en los cuatro rechazos con token presente (D-3, D-4).
 
 ---
 
@@ -502,6 +597,13 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - [ ] Error 500 produce RFC 7807 con mensaje genérico (sin stack trace).
   - [ ] El campo `instance` refleja el path del endpoint que falló.
   - [ ] Los errores 401 y 409 también pasan por el handler.
+- **⚠️ Traspaso de CHANGE-03 (`user-repository`, D-1, D-2)**: `EmailAlreadyExistsError`
+  (`fastapi_bridge/exceptions/domain.py`) debe mapearse a **409 Conflict** vía
+  `problem_detail_response(...)` de `exceptions/handlers.py`, usando `exc.email` (el email
+  ya normalizado) para componer el `detail` sin volver a consultar la base. Conviene
+  registrar el `exception_handler` sobre la base `DomainError` en vez de sobre la
+  excepción concreta: CHANGE-04 (`InvalidCredentialsError`) y CHANGE-11 heredan de la
+  misma base y quedarían cubiertos por el mismo handler.
 
 ---
 

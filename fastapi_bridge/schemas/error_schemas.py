@@ -12,7 +12,9 @@ que no le pertenecen — ver D-10 en `openspec/changes/auth-pydantic-schemas/des
 
 Este módulo solo declara la *forma* del error. La emisión de estos errores
 —registrar los `exception_handler`, construir la respuesta HTTP— es
-responsabilidad de CHANGE-07, no de este módulo.
+responsabilidad de `fastapi_bridge/exceptions/handlers.py` (CHANGE-07), que
+importa `ErrorDetail` y lo usa como constructor efectivo del cuerpo que sale
+por el cable — no de este módulo, que no importa nada de la capa web.
 """
 
 from pydantic import BaseModel, Field
@@ -31,5 +33,10 @@ class ErrorDetail(BaseModel):
     type: str = "about:blank"
     title: str
     status: int = Field(..., ge=100, le=599)
-    detail: str
+    # `detail` es opcional (CHANGE-07, delta `error-contract`, D-1): RFC 7807 §3.1
+    # declara los cinco miembros del Problem Detail como opcionales, y
+    # `problem_detail_response` ya admite emitir un error sin detalle desde
+    # CHANGE-00d. Exigirlo obligado forzaría a cada handler a inventar un texto
+    # cuando el código de estado y el título ya son suficientemente informativos.
+    detail: str | None = None
     instance: str

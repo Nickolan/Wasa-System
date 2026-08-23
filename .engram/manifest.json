@@ -56,6 +56,30 @@
       "sessions": 0,
       "memories": 4,
       "prompts": 0
+    },
+    {
+      "id": "95c3f636",
+      "created_by": "Nicolas",
+      "created_at": "2026-08-22T21:05:49Z",
+      "sessions": 0,
+      "memories": 4,
+      "prompts": 0
+    },
+    {
+      "id": "6195d971",
+      "created_by": "Nicolas",
+      "created_at": "2026-08-23T15:33:44Z",
+      "sessions": 0,
+      "memories": 4,
+      "prompts": 0
+    },
+    {
+      "id": "a18c037a",
+      "created_by": "Nicolas",
+      "created_at": "2026-08-23T20:41:48Z",
+      "sessions": 0,
+      "memories": 12,
+      "prompts": 0
     }
   ]
 }

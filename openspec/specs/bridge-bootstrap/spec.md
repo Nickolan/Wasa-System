@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Establece la estructura fundamental del FastAPI Bridge como microservicio ASGI: cómo se arranca, cómo se configura, cómo se organizan sus capas, cómo se respetan las fronteras de importación entre ellas, y qué superficie de API expone en cada etapa de implementación.
+
+## Requirements
 
 ### Requirement: El servicio arranca como aplicación ASGI
 El FastAPI Bridge SHALL exponerse como una instancia ASGI importable en `fastapi_bridge.main:app`. El **import** del paquete SHALL seguir siendo libre de infraestructura: importar cualquier módulo del servicio no SHALL abrir conexiones de red ni de base de datos, ni requerir que PostgreSQL, n8n o Redis estén disponibles. El **arranque efectivo** del servidor, en cambio, ahora depende de la instancia PostgreSQL `db_fuzzing`, porque el ciclo de `lifespan` crea allí la tabla `users` (ver capacidad `user-persistence`). n8n y Redis siguen sin ser requisitos de arranque.
@@ -77,7 +81,7 @@ El paquete `fastapi_bridge/` SHALL materializar en el filesystem la arquitectura
 - **THEN** ambos dominios tienen su router, su service, su UoW, su repository y su módulo de schemas, sin que uno tenga capas que al otro le falten
 
 ### Requirement: Fronteras de import entre capas
-Las capas SHALL respetar una dirección de dependencia única. En particular, ningún módulo bajo `repositories/` SHALL importar nada de FastAPI, para que la capa de acceso a datos sea reutilizable fuera del framework web.
+Las capas SHALL respetar una dirección de dependencia única. En particular, ningún módulo bajo `repositories/` SHALL importar nada de FastAPI, para que la capa de acceso a datos sea reutilizable fuera del framework web. Además, la criptografía del servicio SHALL estar concentrada en `core/security.py`: ningún módulo bajo `services/`, `repositories/`, `api/` o `schemas/` SHALL importar directamente la librería de hashing de contraseñas ni la librería de JWT, de modo que el hashing, la firma y la verificación tengan una única superficie auditable.
 
 #### Scenario: Repository libre de FastAPI
 - **WHEN** se inspeccionan los imports de `repositories/user_repository.py` y `repositories/n8n_repository.py`
@@ -91,12 +95,24 @@ Las capas SHALL respetar una dirección de dependencia única. En particular, ni
 - **WHEN** se inspeccionan `services/auth_service.py` y `services/scan_service.py`
 - **THEN** no instancian `httpx.AsyncClient` ni sesiones de SQLAlchemy directamente; el acceso se declara a través de la UoW correspondiente
 
+#### Scenario: Service sin criptografía propia
+- **WHEN** se inspeccionan los imports de todos los módulos de `services/`
+- **THEN** ninguno importa la librería de hashing de contraseñas ni la librería de JWT: el acceso pasa por `core/security.py`
+
+#### Scenario: Repository sin la librería de hashing
+- **WHEN** se inspeccionan los imports de todos los módulos de `repositories/`
+- **THEN** ninguno importa la librería de hashing de contraseñas que el proyecto declare en su manifiesto de dependencias: el repositorio recibe el hash ya calculado y lo trata como texto opaco
+
+#### Scenario: Las fronteras están ancladas por tests, no solo documentadas
+- **WHEN** un change futuro agregue a una capa un import prohibido por alguna de estas reglas
+- **THEN** la suite de tests falla, señalando el archivo y el paquete prohibido
+
 ### Requirement: Manifiesto de dependencias
-El proyecto SHALL declarar sus dependencias de runtime y de desarrollo en manifiestos versionados, separando lo que el servicio necesita para correr de lo que sólo se necesita para probarlo.
+El proyecto SHALL declarar sus dependencias de runtime y de desarrollo en manifiestos versionados, separando lo que el servicio necesita para correr de lo que sólo se necesita para probarlo. Las dependencias declaradas SHALL ser instalables y funcionales en conjunto: una combinación de versiones que instale sin conflictos pero falle al invocarse NO SHALL considerarse un manifiesto válido.
 
 #### Scenario: Dependencias de runtime declaradas
 - **WHEN** se lee `fastapi_bridge/requirements.txt`
-- **THEN** contiene `fastapi`, `pydantic[email]`, `pydantic-settings`, `python-jose[cryptography]`, `passlib[bcrypt]`, `sqlalchemy`, `asyncpg`, `httpx`, `slowapi`, `uvicorn` y `python-dotenv`
+- **THEN** contiene `fastapi`, `pydantic[email]`, `pydantic-settings`, `python-jose[cryptography]`, `bcrypt`, `sqlalchemy`, `asyncpg`, `httpx`, `slowapi`, `uvicorn` y `python-dotenv`
 
 #### Scenario: Dependencias de test separadas
 - **WHEN** se lee `fastapi_bridge/requirements-dev.txt`
@@ -106,16 +122,32 @@ El proyecto SHALL declarar sus dependencias de runtime y de desarrollo en manifi
 - **WHEN** se ejecuta `pip install -r fastapi_bridge/requirements.txt` en un entorno virgen
 - **THEN** la instalación termina sin conflictos de resolución y `uvicorn fastapi_bridge.main:app` arranca
 
-### Requirement: Superficie de API acotada al scaffold
-En este estadio el servicio SHALL exponer únicamente el endpoint de salud. Los routers de dominio existen como módulos pero NO SHALL estar montados en la aplicación hasta que sus changes correspondientes los implementen.
+#### Scenario: El hashing de contraseñas funciona con las versiones declaradas
+- **WHEN** se instala el manifiesto de runtime en un entorno virgen y se deriva un hash de contraseña con la librería declarada
+- **THEN** la operación tiene éxito: el manifiesto no admite una combinación de versiones que instale pero rompa al hashear
 
-#### Scenario: Sólo /health está expuesto
+#### Scenario: Sin dependencias sin mantenimiento para la criptografía
+- **WHEN** se lee `fastapi_bridge/requirements.txt`
+- **THEN** no declara `passlib`, cuya última publicación es anterior al proyecto y cuya integración con las versiones actuales de bcrypt está rota
+
+### Requirement: Superficie de API expuesta por el servicio
+La aplicación SHALL exponer, además del endpoint de salud, las dos operaciones de autenticación (`POST /api/v1/auth/register` y `POST /api/v1/auth/login`), montando el router de auth desde `create_app()`. Los routers de dominio cuyos changes todavía no se implementaron —el de scan— SHALL seguir existiendo como módulos sin montar, y sus rutas SHALL seguir respondiendo `404`. Montar un router SHALL ser una decisión explícita del change que implementa sus operaciones, nunca un efecto colateral de otro change.
+
+#### Scenario: Rutas de aplicación registradas
 - **WHEN** se inspecciona `app.routes` descartando las rutas internas de FastAPI (`/docs`, `/openapi.json`, `/redoc`)
-- **THEN** la única ruta de aplicación registrada es `GET /health`
+- **THEN** las rutas de aplicación registradas son exactamente `GET /health`, `POST /api/v1/auth/register` y `POST /api/v1/auth/login`
 
-#### Scenario: Endpoints de dominio aún no disponibles
-- **WHEN** se hace `POST /api/v1/auth/register` o `POST /api/v1/scan/start`
-- **THEN** la respuesta es `404`, porque esos routers todavía no están montados
+#### Scenario: Los endpoints de auth están disponibles
+- **WHEN** se hace `POST /api/v1/auth/register` o `POST /api/v1/auth/login` con un cuerpo válido
+- **THEN** la respuesta no es `404`: ambas rutas están montadas y atendidas por el router de auth
+
+#### Scenario: El endpoint de scan aún no está disponible
+- **WHEN** se hace `POST /api/v1/scan/start`
+- **THEN** la respuesta es `404`, porque ese router todavía no está montado
+
+#### Scenario: El endpoint de salud conserva su contrato
+- **WHEN** se hace `GET /health` con el router de auth montado
+- **THEN** la respuesta sigue siendo `200` con body exactamente `{"status": "ok", "service": "wasa-fastapi-bridge"}`
 
 ### Requirement: El scaffold no toca la base de datos compartida
 El FastAPI Bridge SHALL convivir con el sistema WASA existente sobre la instancia PostgreSQL `db_fuzzing` sin alterar lo que no le pertenece. El servicio SHALL abrir conexión y emitir DDL **exclusivamente** para su propia tabla `users`; las tablas preexistentes `scans` y `vulnerabilities` NO SHALL ser declaradas, mapeadas, leídas, escritas ni migradas desde este servicio.

@@ -1,3 +1,9 @@
 pytest>=8.0
 pytest-asyncio>=0.23
 anyio>=4.0
+# aiosqlite (CHANGE-03, D-6): motor SQLite async en memoria SOLO para la suite
+# de tests de `UserRepository` — ejercita SQL real (constraint UNIQUE,
+# IntegrityError, autoincremento) sin depender de PostgreSQL/db_fuzzing.
+# NUNCA se importa desde código de producción (ver tests/test_layer_boundaries.py
+# y tests/test_no_shared_db_impact.py, que excluyen tests/ de su barrido).
+aiosqlite>=0.20

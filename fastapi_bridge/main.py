@@ -1,8 +1,12 @@
 """Punto de entrada ASGI del FastAPI Bridge.
 
-Expone únicamente `GET /health` en este estadio (CHANGE-00a). Los routers de
-dominio (`api/v1/auth`, `api/v1/scan`) existen como módulos pero no se montan
-acá todavía — ver D-8 en `openspec/changes/fastapi-bridge-scaffold/design.md`.
+Expone `GET /health` y, desde CHANGE-05, las dos rutas del router de auth
+(`POST /api/v1/auth/register`, `POST /api/v1/auth/login`) montadas vía
+`include_router(auth_router)` en `create_app()`. El router de `scan`
+(`api/v1/scan`) existe como módulo pero sigue sin montarse — llega en
+CHANGE-12. El contrato original de superficie acotada (D-8 de
+`openspec/changes/fastapi-bridge-scaffold/design.md`) queda reemplazado por
+el que fija `bridge-bootstrap` tras el delta de CHANGE-05.
 
 El `lifespan` ya no está vacío (CHANGE-01): en el arranque crea, de forma
 idempotente y acotada a `User.__table__`, la tabla `users` en `db_fuzzing`
@@ -24,13 +28,23 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Literal
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from slowapi.errors import RateLimitExceeded
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 
+from fastapi_bridge.api.v1.auth.router import router as auth_router
 from fastapi_bridge.core.limiter import build_limiter
 from fastapi_bridge.core.settings import Settings, get_settings
-from fastapi_bridge.exceptions.handlers import rate_limit_exceeded_handler
+from fastapi_bridge.exceptions.domain import DomainError
+from fastapi_bridge.exceptions.handlers import (
+    domain_error_handler,
+    http_exception_handler,
+    rate_limit_exceeded_handler,
+    request_validation_exception_handler,
+    unhandled_exception_handler,
+)
 
 # D-2: mínimo privilegio explícito, no `["*"]`. Los únicos verbos que el
 # sistema usa: `GET /health`, `POST` de auth y de scan.
@@ -67,7 +81,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    """Arma la `FastAPI` con su política de borde HTTP (CORS + rate limit).
+    """Arma la `FastAPI` con su política de borde: CORS + rate limiting +
+    política de errores (CHANGE-07).
+
+    Esta última es la que hace cumplir la regla dura del proyecto de que
+    ningún error de la API sale fuera de RFC 7807: registra los cinco
+    `exception_handler` globales (validación, HTTP genérica, dominio, límite
+    de tasa, no prevista) definidos en `exceptions/handlers.py`.
 
     `settings` es inyectable para tests que quieran una política distinta
     sin tocar variables de entorno del proceso ni invalidar el `lru_cache`
@@ -95,11 +115,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # contrario todas las rutas (incluida auth y /health) quedarían
     # limitadas por defecto, invirtiendo el requisito.
     app.state.limiter = build_limiter()
+
+    # CHANGE-07 (D-10): los cinco handlers RFC 7807 se registran acá adentro,
+    # no a nivel de módulo — es el único punto donde la `Settings` inyectada
+    # puede alcanzar a la política de borde. El orden va del más específico
+    # al más general por legibilidad; Starlette despacha por el MRO de la
+    # excepción lanzada, no por orden de registro, así que el orden en sí no
+    # cambia el comportamiento. `RateLimitExceeded` hereda de `Exception`,
+    # no de `HTTPException` (D-10) — su handler propio sigue ganando y no
+    # cae en el genérico (ver `test_precedence...` en test_app_wiring.py).
+    app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+    app.add_exception_handler(DomainError, domain_error_handler)
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+    app.add_exception_handler(Exception, unhandled_exception_handler)
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         return HealthResponse(status="ok", service="wasa-fastapi-bridge")
+
+    # CHANGE-05 (D-12): sin `prefix` acá -- el router ya lo declara
+    # (`/api/v1/auth`) en `api/v1/auth/router.py`. El de scan (`api/v1/scan`)
+    # sigue sin montarse hasta CHANGE-12.
+    app.include_router(auth_router)
 
     return app
 

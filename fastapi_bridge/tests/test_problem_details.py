@@ -7,6 +7,8 @@ de la API: todo handler de excepción (este change y CHANGE-07) lo reutiliza.
 import json
 from types import SimpleNamespace
 
+import pytest
+from pydantic import ValidationError
 from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -87,6 +89,15 @@ def test_problem_detail_response_does_not_leak_internal_information():
     assert "file \"" not in serialized
     assert ".py" not in serialized
     assert "fastapi_bridge" not in serialized
+
+
+def test_problem_detail_response_body_is_built_through_error_detail_model():
+    # D-1 (CHANGE-07): el cuerpo se arma vía `ErrorDetail`, no un dict literal
+    # en paralelo — la restricción `status: Field(ge=100, le=599)` deja de ser
+    # decorativa y se convierte en una red real bajo cada handler. Un status
+    # fuera de rango debe fallar en la construcción, no emitirse al cliente.
+    with pytest.raises(ValidationError):
+        problem_detail_response(status_code=700, instance="/x")
 
 
 async def test_rate_limit_exceeded_handler_returns_429_problem_detail():

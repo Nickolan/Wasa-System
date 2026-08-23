@@ -36,6 +36,24 @@ def test_error_detail_type_defaults_to_about_blank():
     assert error.type == "about:blank"
 
 
+# --- `detail` opcional (delta CHANGE-07, D-1: RFC 7807 declara los cinco miembros opcionales) ---
+
+
+def test_error_detail_constructs_without_detail_and_field_is_none():
+    error = ErrorDetail(title="Not Found", status=404, instance="/api/v1/x")
+    assert error.detail is None
+
+
+def test_error_detail_still_accepts_an_explicit_detail():
+    error = ErrorDetail(title="x", status=400, detail="explicito", instance="/x")
+    assert error.detail == "explicito"
+
+
+def test_error_detail_fields_unchanged_after_relaxing_detail():
+    # Relajar el tipo de `detail` no debe agregar ni quitar miembros del modelo.
+    assert set(ErrorDetail.model_fields.keys()) == {"type", "title", "status", "detail", "instance"}
+
+
 # --- Rango de status HTTP (100..599 inclusive) ---
 
 
