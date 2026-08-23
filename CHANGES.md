@@ -508,15 +508,19 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-09] `n8n-repository`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` hecho
 - **Historias US**: HU-03-05
 - **Scope**:
   - `repositories/n8n_repository.py`: clase `N8nRepository`, constructor recibe
-    `client: httpx.AsyncClient`
+    `client: httpx.AsyncClient, settings: Settings` (D-1: divergencia deliberada
+    respecto de la firma sólo-`client` listada arriba — confirmada por el usuario;
+    ver `openspec/changes/change-09-n8n-repository/design.md`)
   - Método async `forward_scan(payload: N8nPayload) -> bool`: POST httpx a
     `settings.N8N_WEBHOOK_URL`, header `X-WASA-TOKEN: settings.N8N_WEBHOOK_TOKEN`,
-    timeout 10s, retorna `True` si n8n responde 200 OK, lanza `N8nUnavailableError`
-    si timeout o respuesta != 200
+    timeout 10s, retorna `True` si n8n responde 2xx (D-4: ablandado de `== 200`
+    exacto a cualquier 2xx tras revisión del usuario — el código de respuesta real
+    del Webhook Trigger de n8n no se puede confirmar desde el repo), lanza
+    `N8nUnavailableError` si timeout, falla de transporte o respuesta fuera de 2xx
 - **Dependencias**: CHANGE-08
 - **Duración estimada**: 1.5 horas
 - **Governance**: MEDIO
@@ -525,11 +529,11 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-07
   - `knowledge-base/07_flujos_principales.md` §Flujo 3: Escaneo
 - **Criterios de Aceptación**:
-  - [ ] Con n8n mockeado respondiendo 200: retorna True.
-  - [ ] Con n8n mockeado respondiendo 500: lanza `N8nUnavailableError`.
-  - [ ] Con n8n inaccesible (timeout): lanza `N8nUnavailableError`.
-  - [ ] El header `X-WASA-TOKEN` se envía en cada request.
-  - [ ] El repository no importa nada de FastAPI.
+  - [x] Con n8n mockeado respondiendo 2xx (200, 201, 204): retorna True. (`test_forward_scan_returns_true_when_n8n_responds_200`, `test_forward_scan_returns_true_for_other_2xx_status_codes`)
+  - [x] Con n8n mockeado respondiendo un código fuera de 2xx (302, 401, 404, 500): lanza `N8nUnavailableError`. (`test_forward_scan_raises_n8n_unavailable_for_non_2xx_status_codes`)
+  - [x] Con n8n inaccesible (timeout, conexión rechazada, falla de transporte): lanza `N8nUnavailableError`. (`test_forward_scan_raises_n8n_unavailable_on_read_timeout`, `test_forward_scan_raises_n8n_unavailable_for_other_transport_errors`)
+  - [x] El header `X-WASA-TOKEN` se envía en cada request, desenvuelto. (`test_forward_scan_sends_the_unwrapped_token_never_the_secretstr_obfuscated_form`, `test_forward_scan_header_travels_on_every_delivery_not_only_the_first`)
+  - [x] El repository no importa nada de FastAPI/Starlette/slowapi. (`fastapi_bridge/tests/test_layer_boundaries.py::test_layer_respects_import_boundary[repositories-fastapi/starlette/slowapi]`)
 
 ---
 
