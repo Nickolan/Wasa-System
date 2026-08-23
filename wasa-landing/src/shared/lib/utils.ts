@@ -1,3 +1,33 @@
+import { type ClassValue, clsx } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+/**
+ * Merges class-name inputs (the same shapes `clsx` accepts — strings,
+ * arrays, conditional objects, falsy values) and resolves conflicting
+ * Tailwind utilities from the same group so the last one wins. This is what
+ * lets a consumer's own `className` override a primitive's default classes
+ * without depending on CSS rule order, which the primitive doesn't control.
+ */
+export function cn(...inputs: ClassValue[]): string {
+  return twMerge(clsx(inputs))
+}
+
+/**
+ * Shared "what message shows and what id describes it" precedence rule used
+ * by both `Input` and `Checkbox` (error beats helper, design.md D-7):
+ * showing both would duplicate what `aria-describedby` reads and compete
+ * for the user's attention right when a single instruction is needed.
+ */
+export function resolveFieldMessage(
+  controlId: string,
+  error: string | undefined,
+  helper: string | undefined,
+): { text: string | undefined; id: string | undefined; isError: boolean } {
+  if (error) return { text: error, id: `${controlId}-error`, isError: true }
+  if (helper) return { text: helper, id: `${controlId}-helper`, isError: false }
+  return { text: undefined, id: undefined, isError: false }
+}
+
 /**
  * Decides, purely from a JWT's own `exp` claim and the local clock, whether
  * the token is still within its validity window (design.md D-1, D-5, D-10).

@@ -70,7 +70,7 @@ describe('cada pieza de dominio aparece únicamente en el change que la implemen
     expect(files).toEqual(['authStore.ts'])
   })
 
-  it.each(['src/entities', 'src/shared/ui', 'src/shared/api', 'src/features'])(
+  it.each(['src/entities', 'src/shared/api', 'src/features'])(
     '%s contains only .gitkeep',
     (relativeDir) => {
       const files = listFilesRecursively(path.join(projectRoot, relativeDir))
@@ -78,6 +78,15 @@ describe('cada pieza de dominio aparece únicamente en el change que la implemen
       expect(nonGitkeep).toEqual([])
     },
   )
+})
+
+describe('src/shared/ui/ está poblado por CHANGE-15 (shared-ui-atoms)', () => {
+  it('contains exactly the five primitives from the roadmap, no .gitkeep leftover', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/shared/ui'))
+    expect(files.sort()).toEqual(
+      ['Button.tsx', 'Checkbox.tsx', 'Input.tsx', 'Modal.tsx', 'Spinner.tsx'].sort(),
+    )
+  })
 })
 
 describe('every .gitkeep is annotated with the change that will populate it (D-10)', () => {

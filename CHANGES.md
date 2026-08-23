@@ -843,7 +843,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-15] `shared-ui-atoms`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado (2026-08-23)
 - **Historias US**: HU-02-01, HU-06-02, HU-06-03, HU-05-02
 - **Scope**:
   - `src/shared/ui/Button.tsx`: variants (primary, secondary), loading state
@@ -860,11 +860,11 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 - **Leer antes**:
   - `knowledge-base/08_arquitectura_propuesta.md` §Regla de capas frontend (estricta)
 - **Criterios de Aceptación**:
-  - [ ] `<Button loading>` muestra Spinner y está deshabilitado.
-  - [ ] `<Input error="msg">` muestra borde rojo y mensaje.
-  - [ ] `<Modal isOpen onClose={fn}>` renderiza backdrop y cierra con Escape.
-  - [ ] Ningún componente importa de @features, @entities, @pages, @widgets.
-  - [ ] `npm run build` sin errores TypeScript.
+  - [x] `<Button loading>` muestra Spinner y está deshabilitado.
+  - [x] `<Input error="msg">` muestra borde rojo y mensaje.
+  - [x] `<Modal isOpen onClose={fn}>` renderiza backdrop y cierra con Escape.
+  - [x] Ningún componente importa de @features, @entities, @pages, @widgets.
+  - [x] `npm run build` sin errores TypeScript.
 
 ---
 
