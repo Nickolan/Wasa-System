@@ -655,7 +655,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 > `16` cierra la fase.
 
 ### [CHANGE-13] `zustand-auth-store`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completo
 - **Historias US**: HU-06-04, HU-06-05
 - **Scope**:
   - `src/app/stores/authStore.ts`: state `token: string | null`, `email: string | null`,
@@ -673,12 +673,12 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/08_arquitectura_propuesta.md` §Zustand + persist
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-14
 - **Criterios de Aceptación**:
-  - [ ] `authStore.login(token, email)` actualiza isAuthenticated a true.
-  - [ ] `authStore.logout()` limpia token, email, isAuthenticated y localStorage.
-  - [ ] Al recargar la app, hydrate() restaura la sesión si el token no expiró.
-  - [ ] Al recargar con token expirado, hydrate() limpia el authStore.
-  - [ ] `jwtIsExpired(token)` retorna true si el claim `exp` está en el pasado.
-  - [ ] `tsc --noEmit` sin errores en authStore y utils.
+  - [x] `authStore.login(token, email)` actualiza isAuthenticated a true.
+  - [x] `authStore.logout()` limpia token, email, isAuthenticated y localStorage.
+  - [x] Al recargar la app, hydrate() restaura la sesión si el token no expiró.
+  - [x] Al recargar con token expirado, hydrate() limpia el authStore.
+  - [x] `jwtIsExpired(token)` retorna true si el claim `exp` está en el pasado.
+  - [x] `tsc --noEmit` sin errores en authStore y utils.
 
 ---
 
