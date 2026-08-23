@@ -1,0 +1,55 @@
+import type { ComponentPropsWithoutRef, Ref } from 'react'
+import { cn } from '@shared/lib/utils'
+import { Spinner } from '@shared/ui/Spinner'
+
+export type ButtonVariant = 'primary' | 'secondary'
+
+const BASE_CLASSES =
+  'inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60'
+
+/**
+ * Visual classes per `ButtonVariant` (design.md D-6): centralized here so
+ * CHANGE-20 can replace flat utilities with semantic tokens in one place,
+ * without touching logic or tests (tests only assert the classes differ,
+ * never a concrete color — R-1). Chosen to read on the current dark
+ * placeholder background (`bg-slate-950`).
+ */
+const VARIANT_CLASSES: Record<ButtonVariant, string> = {
+  primary: 'bg-sky-600 text-white hover:bg-sky-500',
+  secondary: 'border border-slate-600 bg-transparent text-slate-100 hover:bg-slate-800',
+}
+
+export interface ButtonProps extends ComponentPropsWithoutRef<'button'> {
+  variant?: ButtonVariant
+  loading?: boolean
+  ref?: Ref<HTMLButtonElement>
+}
+
+/**
+ * `loading` disables the button (`disabled={disabled || loading}`) and sets
+ * `aria-busy` so a second click during an in-flight request is impossible at
+ * the DOM level, not by convention (D-10). The label stays visible next to
+ * the spinner to avoid a layout jump and keep the accessible name stable.
+ */
+export function Button({
+  variant = 'primary',
+  loading = false,
+  disabled,
+  className,
+  children,
+  ref,
+  ...rest
+}: ButtonProps) {
+  return (
+    <button
+      ref={ref}
+      disabled={disabled || loading}
+      aria-busy={loading}
+      className={cn(BASE_CLASSES, VARIANT_CLASSES[variant], className)}
+      {...rest}
+    >
+      {loading && <Spinner size="sm" />}
+      {children}
+    </button>
+  )
+}
