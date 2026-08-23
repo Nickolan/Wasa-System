@@ -666,23 +666,35 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-10] `scan-unit-of-work`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` hecho
 - **Historias US**: HU-03-05
 - **Scope**:
-  - `uow/scan_unit_of_work.py`: clase `ScanUoW` (async context manager)
-  - `__aenter__`: instancia httpx.AsyncClient y N8nRepository
-  - `__aexit__`: cierra el cliente httpx (aclose) incluso si hay excepción
-  - Expone propiedad `n8n: N8nRepository`
+  - `uow/scan_unit_of_work.py`: clase `ScanUoW` (async context manager), constructor
+    `__init__(self, settings: Settings | None = None)` (D-2 de CHANGE-10: extensión
+    deliberada respecto de la firma sin argumentos listada originalmente acá — resuelve
+    `get_settings()` como fallback cuando no se inyecta una `Settings` explícita)
+  - `__aenter__`: instancia `httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS)` y
+    `N8nRepository(client, settings)` — firma real de dos argumentos confirmada en
+    CHANGE-09 (ver Scope de CHANGE-09 abajo), no la firma sólo-`client` que este
+    documento listaba originalmente
+  - `__aexit__`: cierra el cliente httpx (`aclose()`) incluso si hay excepción, sin
+    suprimirla (`-> None`, nunca `-> bool`)
+  - Expone propiedad `n8n: N8nRepository`, que levanta `RuntimeError` si se accede
+    fuera del ámbito (antes de `__aenter__` o después de `__aexit__`)
+  - `pytest.ini`: una línea agregada (`asyncio_default_fixture_loop_scope = function`),
+    detectada y corregida en la re-verificación de este change — sin ella, la suite
+    completa con `test_scan_unit_of_work.py` incluido emite un `PytestDeprecationWarning`
+    de `pytest-asyncio` bajo `pytest -W error` (ver nota en `tasks.md` 8.5)
 - **Dependencias**: CHANGE-09
 - **Duración estimada**: 1 hora
 - **Governance**: MEDIO
 - **Leer antes**:
   - `knowledge-base/08_arquitectura_propuesta.md` §Patrones (Unit of Work)
 - **Criterios de Aceptación**:
-  - [ ] Uso via `async with ScanUoW() as uow:` funciona sin errores.
-  - [ ] El cliente httpx se cierra correctamente al salir.
-  - [ ] Si ocurre excepción dentro del bloque, httpx igual se cierra.
-  - [ ] `uow.n8n` expone el N8nRepository instanciado.
+  - [x] Uso via `async with ScanUoW() as uow:` funciona sin errores. (`test_scan_uow_can_be_constructed_with_no_arguments_at_all`, `test_entering_the_scope_yields_the_uow_instance_itself`)
+  - [x] El cliente httpx se cierra correctamente al salir. (`test_normal_exit_closes_the_channel`, `test_channel_closes_even_when_no_delivery_was_ever_made`)
+  - [x] Si ocurre excepción dentro del bloque, httpx igual se cierra. (`test_exit_by_arbitrary_exception_still_closes_the_channel_and_propagates_it`, `test_exit_by_n8n_unavailable_error_closes_the_channel_and_preserves_the_original_type`)
+  - [x] `uow.n8n` expone el N8nRepository instanciado. (`test_n8n_property_exposes_an_n8n_repository_instance`, `test_accessing_n8n_before_entering_the_scope_raises_runtime_error`)
 
 ---
 

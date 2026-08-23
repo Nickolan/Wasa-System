@@ -1,6 +1,6 @@
 ## Purpose
 
-Establece la estructura fundamental del FastAPI Bridge como microservicio ASGI: cómo se arranca, cómo se configura, cómo se organizan sus capas, cómo se respetan las fronteras de importación entre ellas, y qué superficie de API expone en cada etapa de implementación.
+Define el arranque mínimo del FastAPI Bridge: cómo se expone como aplicación ASGI, qué endpoint de salud ofrece, de dónde sale su configuración tipada, qué estructura de capas materializa en el filesystem, qué fronteras de import separan esas capas, qué dependencias declara y qué superficie de API queda expuesta en este estadio. Es la base sobre la que se apoyan todos los changes de dominio posteriores.
 
 ## Requirements
 
