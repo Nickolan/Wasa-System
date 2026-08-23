@@ -32,14 +32,16 @@ def test_app_is_a_fastapi_instance():
     assert isinstance(app, fastapi.FastAPI)
 
 
-async def test_domain_routers_are_not_mounted_yet():
-    # D-8: los routers de auth/scan existen como módulos pero no se montan en
-    # main.py todavía. Esto es contrato explícito, no un bug.
+async def test_auth_router_is_mounted_but_scan_router_is_not_yet():
+    # CHANGE-05: el router de auth queda montado (deja de responder 404); el
+    # de scan sigue sin montarse hasta CHANGE-12. `/register` sin cuerpo
+    # dispara un 422 de validación (la ruta existe), no un 404 (la ruta no
+    # existe) -- es justamente la distinción que separa ambos casos.
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         register_response = await client.post("/api/v1/auth/register")
         scan_response = await client.post("/api/v1/scan/start")
-    assert register_response.status_code == 404
+    assert register_response.status_code != 404
     assert scan_response.status_code == 404
 
 
