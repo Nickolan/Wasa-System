@@ -12,6 +12,8 @@ FASTAPI_BRIDGE_ROOT = Path(__file__).resolve().parent.parent
 # nueva en un change futuro es una línea acá (D-12 / 5.5).
 LAYER_IMPORT_RULES: list[tuple[str, str]] = [
     ("repositories", "fastapi"),
+    ("repositories", "starlette"),
+    ("repositories", "slowapi"),
     ("repositories", "passlib"),
     ("repositories", "bcrypt"),
     ("api", "sqlalchemy"),
