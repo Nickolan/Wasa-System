@@ -1,7 +1,9 @@
 ## Purpose
 
 Establecer la base estructural del proyecto React + Vite (wasa-landing) con configuración de desarrollo, estilos Tailwind y arquitectura Feature-Sliced Design, sin implementar funcionalidad de dominio ni dependencias de runtime.
+
 ## Requirements
+
 ### Requirement: El proyecto arranca en modo desarrollo
 La Landing Page SHALL existir como proyecto Vite en `wasa-landing/`, capaz de arrancar su servidor de desarrollo sin ninguna dependencia de infraestructura externa (FastAPI Bridge, PostgreSQL, n8n) disponible.
 
@@ -35,6 +37,10 @@ El proyecto SHALL producir un build de producción y pasar el chequeo de tipos d
 ### Requirement: Estructura de capas Feature-Sliced Design
 El árbol `wasa-landing/src/` SHALL materializar en el filesystem las seis capas FSD definidas en `knowledge-base/08_arquitectura_propuesta.md`, de modo que cada change posterior tenga un destino inequívoco para su código.
 
+La capa `widgets/` SHALL estar organizada en slices, una por sección de la Landing, y cada slice SHALL exponer su API pública en un único punto de entrada. Los consumidores de un widget SHALL importar desde ese punto de entrada y SHALL NOT alcanzar rutas internas de la slice.
+
+La página de aterrizaje SHALL ser la composición de esas secciones, no un contenido de relleno: SHALL NOT quedar en el árbol ningún placeholder ni ningún formulario montado suelto fuera de la sección que le corresponde.
+
 #### Scenario: Las seis capas existen
 - **WHEN** se inspecciona `wasa-landing/src/`
 - **THEN** existen los directorios `app/`, `pages/`, `widgets/`, `features/`, `entities/` y `shared/`
@@ -50,6 +56,18 @@ El árbol `wasa-landing/src/` SHALL materializar en el filesystem las seis capas
 #### Scenario: La app renderiza el placeholder de la Landing
 - **WHEN** se renderiza `src/app/App.tsx`
 - **THEN** el árbol resultante contiene el componente `LandingPage` definido en `src/pages/LandingPage/index.tsx`
+
+#### Scenario: La Landing es la composición de sus secciones
+- **WHEN** se renderiza `src/pages/LandingPage/index.tsx`
+- **THEN** el árbol resultante contiene las secciones de la Landing y ningún contenido de relleno
+
+#### Scenario: La capa widgets está poblada y organizada en slices
+- **WHEN** se inspecciona `src/widgets/`
+- **THEN** contiene una slice por sección de la Landing, cada una con su punto de entrada público, y ya no contiene el `.gitkeep` que sostenía el directorio vacío
+
+#### Scenario: Ningún formulario queda montado fuera de su sección
+- **WHEN** se inspecciona `src/pages/LandingPage/index.tsx`
+- **THEN** no monta directamente ningún formulario de dominio: cada formulario llega a la página a través de la sección que lo contiene
 
 ### Requirement: Fronteras de import entre capas FSD
 Las capas SHALL respetar una dirección de dependencia única y descendente: `app → pages → widgets → features → entities → shared`. Ninguna capa SHALL importar de una capa superior, y `shared/` SHALL permanecer libre de todo conocimiento del dominio WASA.
@@ -133,4 +151,3 @@ El árbol `wasa-landing/src/` SHALL contener funcionalidad de dominio si y sólo
 #### Scenario: Los directorios aún vacíos siguen marcados y anotados
 - **WHEN** se inspecciona cada `.gitkeep` que queda bajo `src/`
 - **THEN** cada uno contiene un comentario no vacío que nombra el change que poblará ese directorio
-

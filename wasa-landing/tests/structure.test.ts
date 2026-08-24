@@ -155,6 +155,64 @@ describe('src/entities/scan/ quedó poblado por CHANGE-17 (D-9)', () => {
   })
 })
 
+describe('src/widgets/ quedó poblado por CHANGE-19 (D-1..D-14)', () => {
+  it('src/widgets/.gitkeep ya no existe — la capa dejó de estar vacía', () => {
+    expect(existsSync(path.join(projectRoot, 'src/widgets/.gitkeep'))).toBe(false)
+  })
+
+  it('src/widgets/ contiene únicamente las seis slices declaradas por el design, sin otras', () => {
+    const entries = readdirSync(path.join(projectRoot, 'src/widgets')).sort()
+    expect(entries).toEqual(
+      ['auth-modal', 'features-section', 'footer', 'hero', 'how-it-works', 'scan-form'].sort(),
+    )
+  })
+
+  it('src/widgets/auth-modal/ contiene exactamente los módulos declarados por el design (D-1, D-3, D-4)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/widgets/auth-modal')).sort()
+    expect(files).toEqual(
+      [
+        'index.ts',
+        path.join('model', 'useAuthModal.ts'),
+        path.join('ui', 'LoginModal.tsx'),
+        path.join('ui', 'RegisterModal.tsx'),
+      ].sort(),
+    )
+  })
+
+  it('src/widgets/scan-form/ contiene exactamente los módulos declarados por el design (D-5, D-6, D-8, D-11)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/widgets/scan-form')).sort()
+    expect(files).toEqual(
+      ['index.ts', path.join('model', 'anchor.ts'), path.join('ui', 'ScanFormWidget.tsx')].sort(),
+    )
+  })
+
+  it('src/widgets/hero/ contiene exactamente los módulos declarados por el design (D-2, D-7)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/widgets/hero')).sort()
+    expect(files).toEqual(
+      ['index.ts', path.join('model', 'useHeroCta.ts'), path.join('ui', 'HeroWidget.tsx')].sort(),
+    )
+  })
+
+  it('src/widgets/features-section/ contiene exactamente los módulos declarados por el design (D-9, D-10)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/widgets/features-section')).sort()
+    expect(files).toEqual(
+      ['index.ts', path.join('model', 'tools.ts'), path.join('ui', 'FeaturesWidget.tsx')].sort(),
+    )
+  })
+
+  it('src/widgets/how-it-works/ contiene exactamente los módulos declarados por el design (D-9)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/widgets/how-it-works')).sort()
+    expect(files).toEqual(
+      ['index.ts', path.join('model', 'steps.ts'), path.join('ui', 'HowItWorksWidget.tsx')].sort(),
+    )
+  })
+
+  it('src/widgets/footer/ contiene exactamente los módulos declarados por el design', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/widgets/footer')).sort()
+    expect(files).toEqual(['index.ts', path.join('ui', 'FooterWidget.tsx')].sort())
+  })
+})
+
 describe('src/shared/ui/ está poblado por CHANGE-15 (shared-ui-atoms)', () => {
   it('contains exactly the five primitives from the roadmap, no .gitkeep leftover', () => {
     const files = listFilesRecursively(path.join(projectRoot, 'src/shared/ui'))
