@@ -1,34 +1,58 @@
 import { useId } from 'react'
 import { STEPS } from '../model/steps'
 
-const SECTION_CLASSES = 'flex w-full flex-col items-center gap-8 px-6 py-16 text-slate-100'
-const HEADING_CLASSES = 'text-2xl font-bold tracking-tight sm:text-3xl'
-const LIST_CLASSES = 'grid w-full max-w-4xl list-none grid-cols-1 gap-6 sm:grid-cols-2'
-const STEP_CLASSES = 'flex flex-col gap-2 rounded-lg border border-slate-800 bg-slate-900 p-6'
-const STEP_NUMBER_CLASSES = 'text-sm font-semibold text-sky-500'
-const STEP_TITLE_CLASSES = 'text-lg font-semibold'
-const STEP_DESCRIPTION_CLASSES = 'text-sm text-slate-400'
+const ANIMATION_DELAYS = [
+  'animation-delay-100',
+  'animation-delay-200',
+  'animation-delay-300',
+  'animation-delay-400',
+] as const
 
 /**
- * Sección del flujo paso a paso (HU-01-03): pasos numerados, en orden
- * explícito, sin nombrar el orquestador, la cola ni el worker.
+ * Sección del flujo paso a paso: pasos numerados con diseño de timeline,
+ * gradientes en los badges y animaciones de entrada escalonadas.
  */
 export function HowItWorksWidget() {
-  // `landing-composition`: cada sección es una región identificable y con
-  // nombre. Un <section> sin nombre accesible no expone `role="region"`.
   const headingId = useId()
 
   return (
-    <section className={SECTION_CLASSES} aria-labelledby={headingId}>
-      <h2 id={headingId} className={HEADING_CLASSES}>
-        Cómo funciona
-      </h2>
-      <ol className={LIST_CLASSES}>
+    <section
+      className="relative flex w-full flex-col items-center gap-12 px-6 py-24 text-slate-100"
+      aria-labelledby={headingId}
+    >
+      <div className="flex flex-col items-center gap-3">
+        <span className="text-sm font-semibold tracking-wider text-sky-400 uppercase">
+          Proceso
+        </span>
+        <h2 id={headingId} className="text-3xl font-bold tracking-tight sm:text-4xl">
+          Cómo funciona
+        </h2>
+        <p className="max-w-lg text-center text-base text-slate-400">
+          Cuatro pasos simples para analizar la seguridad de tu aplicación web.
+        </p>
+      </div>
+
+      <ol className="relative flex w-full max-w-4xl flex-col gap-0 sm:gap-0">
         {STEPS.map((step, index) => (
-          <li key={step.title} className={STEP_CLASSES}>
-            <span className={STEP_NUMBER_CLASSES}>Paso {index + 1}</span>
-            <h3 className={STEP_TITLE_CLASSES}>{step.title}</h3>
-            <p className={STEP_DESCRIPTION_CLASSES}>{step.description}</p>
+          <li
+            key={step.title}
+            className={`animate-fade-in-up relative flex gap-6 pb-12 last:pb-0 ${ANIMATION_DELAYS[index] ?? ''}`}
+          >
+            {/* Timeline line */}
+            {index < STEPS.length - 1 && (
+              <div className="absolute top-12 left-5 h-[calc(100%-2rem)] w-px bg-gradient-to-b from-sky-500/40 to-transparent" />
+            )}
+
+            {/* Step number badge */}
+            <div className="relative z-10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-sky-700 text-sm font-bold text-white shadow-lg shadow-sky-500/20">
+              {index + 1}
+            </div>
+
+            {/* Content card */}
+            <div className="glass-card flex-1 rounded-2xl p-6 transition-all duration-300 hover:scale-[1.01]">
+              <h3 className="text-lg font-bold">{step.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">{step.description}</p>
+            </div>
           </li>
         ))}
       </ol>
