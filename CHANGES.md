@@ -1055,7 +1055,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ## FASE 5 — Integración n8n + Validación E2E
 
 ### [CHANGE-21] `n8n-webhook-trigger`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` archivado (2026-08-24)
 - **Historias US**: HU-04-01, HU-04-02
 - **Scope**:
   - En n8n: agregar nodo Webhook Trigger (POST, `/webhook/wasa-scan`, Header Auth
@@ -1071,11 +1071,11 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/07_flujos_principales.md` §Flujo 3: Escaneo (paso 10 — ejecución n8n en background)
   - `knowledge-base/08_arquitectura_propuesta.md` §Variables de entorno (N8N_WEBHOOK_URL, N8N_WEBHOOK_TOKEN)
 - **Criterios de Aceptación**:
-  - [ ] POST manual al webhook (curl) dispara el workflow completo.
-  - [ ] Los nodos downstream reciben target_url, phpsessid, sqlmap_level, sqlmap_risk, scan_id.
-  - [ ] El webhook responde 200 OK inmediatamente.
-  - [ ] El Schedule Trigger está desactivado.
-  - [ ] Sin `X-WASA-TOKEN` correcto: el webhook retorna 401.
+  - [x] POST manual al webhook (curl/Thunder Client) dispara el workflow completo.
+  - [x] Los nodos downstream reciben target_url, phpsessid, sqlmap_level, sqlmap_risk. (`scan_id`, UUID del Bridge, se descarta dentro de n8n — `scans.id` es SERIAL sin columna para un UUID externo; n8n sigue generando su propio id, ver `openspec/changes/n8n-webhook-trigger/design.md` D-1 y `tasks.md` 2.4.)
+  - [x] El webhook responde 200 OK inmediatamente.
+  - [x] El Schedule Trigger está desactivado.
+  - [x] Sin `X-WASA-TOKEN` correcto: el webhook retorna 403. (Corregido de 401 a 403 — comportamiento nativo no configurable del Header Auth de n8n, ver design.md D-1 "Aprendizaje".)
 
 ---
 
