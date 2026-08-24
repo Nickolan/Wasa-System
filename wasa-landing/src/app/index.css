@@ -1,1 +1,60 @@
 @import "tailwindcss";
+
+/*
+ * landing-shell (CHANGE-20, D-3, D-4): punto único de declaración de los
+ * valores de diseño compartidos. `@theme` en lugar de `:root { --x: ... }` a
+ * mano porque además de emitir las variables CSS reales, las integra al
+ * sistema de utilidades de Tailwind — y sobreescribir `--font-sans` acá
+ * reemplaza la pila que el *preflight* ya aplica a la raíz del documento, de
+ * modo que la tipografía llega a los widgets por herencia sin editarlos.
+ *
+ * Los seis tokens son alias de valores YA presentes en la interfaz (D-4):
+ * ningún color nuevo se introduce. Nombres semánticos, no nombres de color.
+ *
+ * Los cinco tokens de color se declaran como `var(--color-<paleta>)`, NO como
+ * un literal hexadecimal: Tailwind 4 define su paleta en oklch y esos valores
+ * no coinciden con los hex de Tailwind 3 (`red-500` es #fb2c36, no #ef4444;
+ * `sky-600` es #0084d1, no #0284c7). Un literal escrito a mano sería una copia
+ * que ya diverge de lo que la interfaz pinta — rompería tanto el requisito
+ * "sin tokens huérfanos" como el "sin cambio visual". Referenciar la variable
+ * de la paleta hace que el alias sea exacto por construcción, y Tailwind emite
+ * la variable referenciada aunque ninguna utilidad la use.
+ *
+ * `@theme static` en lugar de `@theme`: Tailwind 4 sólo emite en el CSS
+ * final las variables que detecta usadas por alguna utilidad presente en el
+ * código escaneado (D-4 dice que sólo dos de los seis se consumen hoy). Sin
+ * `static`, los otros cuatro quedarían declarados en la fuente pero
+ * ausentes del CSS servido — no serían un "punto único de verdad"
+ * inspeccionable, sólo una declaración muerta hasta el primer consumidor.
+ * `static` los fuerza a existir siempre como custom properties reales.
+ */
+@theme static {
+  --font-sans:
+    'Inter', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    'Segoe UI Symbol', 'Noto Color Emoji';
+
+  /* slate-950 — el fondo que hoy pinta <main> en LandingPage */
+  --color-surface-base: var(--color-slate-950);
+  /* slate-900 — el fondo de tarjetas y modales (Modal, Input) */
+  --color-surface-elevated: var(--color-slate-900);
+  /* sky-600 — el CTA del Hero y la variante primaria de Button */
+  --color-brand: var(--color-sky-600);
+  /* red-500 — bordes y mensajes de validación en error (Input) */
+  --color-danger: var(--color-red-500);
+  /* green-500 — el borde de campo válido (Input) */
+  --color-success: var(--color-green-500);
+}
+
+/*
+ * D-5: la superficie base sube al documento completo, no sólo a <main>. Sin
+ * esto, entre la entrega del HTML y el montaje de React la pantalla queda
+ * blanca (destello) y el área de sobre-desplazamiento también. El
+ * `bg-slate-950` de <main> se queda donde está (redundante, inofensivo) para
+ * no editar un archivo de CHANGE-19.
+ */
+@layer base {
+  html {
+    background-color: var(--color-surface-base);
+    color-scheme: dark;
+  }
+}
