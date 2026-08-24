@@ -122,7 +122,6 @@
       "prompts": 0
     },
     {
-      
       "id": "cc4214dc",
       "created_by": "Lauti Ferreria",
       "created_at": "2026-08-23T21:13:57Z",
@@ -135,7 +134,16 @@
       "created_by": "Lauti Ferreria",
       "created_at": "2026-08-24T00:51:06Z",
       "sessions": 0,
-      "memories": 8
+      "memories": 8,
+      "prompts": 0
+    },
+    {
+      "id": "84b07340",
+      "created_by": "Lauti Ferreria",
+      "created_at": "2026-08-24T03:03:13Z",
+      "sessions": 0,
+      "memories": 4,
+      "prompts": 0
     }
   ]
 }

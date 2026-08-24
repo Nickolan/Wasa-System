@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Capa de servicio y Unit of Work del dominio auth: registro con hash y emisión de token, login con verificación de credenciales indistinguible en mensaje y en tiempo, y el único límite transaccional (`AuthUoW`) sobre la persistencia de usuarios.
+
+## Requirements
 
 ### Requirement: Un único límite transaccional para las operaciones de auth
 El acceso a la persistencia desde la capa de servicio de auth SHALL pasar por una Unit of Work, `AuthUoW`, declarada en `fastapi_bridge/uow/auth_unit_of_work.py`, que es un context manager asíncrono. Al entrar SHALL abrir una sesión asíncrona obtenida de la factory de sesiones del proyecto y SHALL exponer el repositorio de usuarios ya construido sobre ella. Al salir SHALL confirmar la transacción si el bloque terminó sin excepción, SHALL deshacerla si hubo cualquier excepción, y SHALL cerrar la sesión en ambos casos. El constructor SHALL recibir la factory de sesiones y NO SHALL recibir una sesión ya abierta ni construir un engine propio.

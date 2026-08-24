@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Modelo ORM `User` mapeado a la tabla `users` en PostgreSQL `db_fuzzing`, con las columnas, la restricción de unicidad de email a nivel de motor y el tipado propios de la entidad de usuario del SaaS.
+
+## Requirements
 
 ### Requirement: Entidad `users` declarada como modelo ORM
 El FastAPI Bridge SHALL declarar la entidad de usuario del SaaS como una única clase `User` en `fastapi_bridge/db/models.py`, mapeada a la tabla `users` y heredando de la `DeclarativeBase` del proyecto definida en `fastapi_bridge/db/base.py`. La clase SHALL usar el estilo tipado de SQLAlchemy 2.0 (`Mapped` / `mapped_column`), con type hints explícitos en cada columna.

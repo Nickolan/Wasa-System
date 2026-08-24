@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Primitivas de hashing y verificación de contraseñas con bcrypt, aisladas en el módulo de seguridad, con coste fijo por constante del módulo y ejecución fuera del bucle de eventos.
+
+## Requirements
 
 ### Requirement: Derivación de hash de contraseña con bcrypt
 El servicio SHALL exponer una operación de hashing de contraseñas en `fastapi_bridge/core/security.py` que recibe la contraseña en texto plano y devuelve su hash bcrypt en formato modular (el string autodescriptivo que empieza por `$2b$` y lleva embebido el algoritmo, el coste y la sal). La operación NO SHALL persistir, registrar ni devolver la contraseña original, y NO SHALL exponer ningún parámetro que permita a un llamador debilitar el algoritmo desde fuera del módulo (RN-WS-12).
