@@ -1045,10 +1045,14 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/06_funcionalidades.md` §Épica 1
   - `knowledge-base/08_arquitectura_propuesta.md` §Estructura de directorios (frontend)
 - **Criterios de Aceptación**:
-  - [ ] La Landing renderiza todas las secciones en orden correcto.
-  - [ ] Al cargar la app, hydrate() restaura la sesión si el JWT en localStorage es válido.
-  - [ ] La página no tiene errores en consola del navegador.
-  - [ ] Lighthouse Performance > 80 en desktop.
+  - [x] La Landing renderiza todas las secciones en orden correcto. (Regresión: ya cubierto por `tests/landing-page.test.tsx`, CHANGE-19 — verificado sin regresión en el `npm run test:run` de este change.)
+  - [x] Al cargar la app, hydrate() restaura la sesión si el JWT en localStorage es válido. (Regresión: ya cubierto por `tests/app-hydration.test.tsx`, CHANGE-19 — verificado sin regresión.)
+  - [x] La página no tiene errores en consola del navegador. (Verificado con `tests/landing-console-clean.test.tsx` — App bajo StrictMode, con y sin sesión persistida, 0 llamadas a `console.error`/`console.warn` — y en navegador real headless vía CDP contra `npm run preview`: 0 eventos de consola, 0 entradas de `Log` nivel error/warning, 0 excepciones, 0 fallos de red, a 1280 px, a 375 px y con el modal de autenticación abierto. **Auditoría 2026-08-24**: la primera firma de este criterio era falsa — la página emitía `GET /favicon.ico 404` como error rojo; corregido con `<link rel="icon" href="data:," />`. La auditoría `errors-in-console` de Lighthouse pasa de 0 a 1 y Best Practices de 96 a 100.)
+  - [x] Lighthouse Performance > 80 en desktop. (Medido 2026-08-24 contra `npm run build` + `npm run preview`, preset `desktop`, Chromium/Edge headless: **Performance 100/100** en la corrida del apply y **99/100** en tres corridas independientes de la auditoría — varianza normal, ambas muy por encima de 80. TBT 0ms, CLS 0.)
+
+**Auditoría de re-validación (2026-08-24)**: dos defectos reales encontrados y corregidos —(A) los cinco tokens de color declaraban hex de Tailwind 3 sobre un proyecto con Tailwind 4 (paleta oklch), es decir colores que la interfaz no usa; corregidos a alias `var(--color-*)` de la paleta— y (B) el error de consola del favicon descrito arriba. Detalle completo en `openspec/changes/change-20-landing-page-composition/tasks.md` §8. Suite: **547 tests en verde** (52 archivos; los mismos 2 archivos con fallo de import preexistente y ajeno al change). `npm run lint` y `npm run build`: exit 0.
+
+Change listo para el gate manual de archivado (`/opsx:archive`) — pendiente de aprobación explícita del usuario en el turno.
 
 ---
 
