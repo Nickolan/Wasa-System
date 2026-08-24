@@ -115,12 +115,12 @@ El `package.json` SHALL declarar el stack completo que el roadmap consume en cha
 - **WHEN** se ejecuta el comando de tests del proyecto
 - **THEN** el runner arranca, descubre la suite y reporta resultados sin errores de configuración
 
-### Requirement: El scaffold no implementa funcionalidad de dominio
-El change SHALL limitarse a la estructura. Ninguna regla de negocio, store, schema de validación, componente de UI reutilizable ni cliente HTTP SHALL implementarse en este estadio; cada uno pertenece a su change declarado en el roadmap.
+### Requirement: Cada pieza de dominio aparece únicamente en el change que la implementa
+El árbol `wasa-landing/src/` SHALL contener funcionalidad de dominio si y sólo si el change que la implementa ya ocurrió. Un directorio de capa cuyo contenido todavía no fue implementado SHALL permanecer vacío, marcado únicamente con un `.gitkeep` anotado con el change que lo poblará (D-10); una vez implementado su contenido, ese `.gitkeep` SHALL retirarse. Ningún change SHALL adelantar código que el roadmap asignó a otro.
 
-#### Scenario: Sin authStore
+#### Scenario: El estado de sesión ya está implementado y acotado
 - **WHEN** se inspecciona `src/app/stores/`
-- **THEN** no existe `authStore.ts` (pertenece a CHANGE-13) y el directorio queda vacío, marcado únicamente con un `.gitkeep` anotado (D-10)
+- **THEN** existe `authStore.ts` (CHANGE-13), ya no existe el `.gitkeep` que sostenía el directorio vacío, y no hay ningún otro store
 
 #### Scenario: Sin schemas ni componentes de dominio
 - **WHEN** se inspeccionan `src/entities/`, `src/shared/ui/` y `src/features/`
@@ -129,4 +129,8 @@ El change SHALL limitarse a la estructura. Ninguna regla de negocio, store, sche
 #### Scenario: Sin cliente HTTP configurado
 - **WHEN** se inspecciona `src/shared/api/`
 - **THEN** no existe una instancia de Axios con interceptor Bearer (pertenece a CHANGE-16) y el directorio queda vacío, marcado únicamente con un `.gitkeep` anotado
+
+#### Scenario: Los directorios aún vacíos siguen marcados y anotados
+- **WHEN** se inspecciona cada `.gitkeep` que queda bajo `src/`
+- **THEN** cada uno contiene un comentario no vacío que nombra el change que poblará ese directorio
 

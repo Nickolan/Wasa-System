@@ -60,12 +60,17 @@ describe('roadmap-committed subdirectories exist', () => {
   })
 })
 
-describe('no domain functionality leaks into the scaffold (D-14, Non-Goals)', () => {
-  it('src/app/stores/authStore.ts does not exist', () => {
-    expect(existsSync(path.join(projectRoot, 'src/app/stores/authStore.ts'))).toBe(false)
+describe('cada pieza de dominio aparece únicamente en el change que la implementa (CHANGE-13)', () => {
+  it('src/app/stores/authStore.ts exists', () => {
+    expect(existsSync(path.join(projectRoot, 'src/app/stores/authStore.ts'))).toBe(true)
   })
 
-  it.each(['src/entities', 'src/shared/ui', 'src/shared/api', 'src/features'])(
+  it('src/app/stores/ contains no other store besides authStore.ts', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/app/stores'))
+    expect(files).toEqual(['authStore.ts'])
+  })
+
+  it.each(['src/shared/api', 'src/features'])(
     '%s contains only .gitkeep',
     (relativeDir) => {
       const files = listFilesRecursively(path.join(projectRoot, relativeDir))
@@ -73,6 +78,39 @@ describe('no domain functionality leaks into the scaffold (D-14, Non-Goals)', ()
       expect(nonGitkeep).toEqual([])
     },
   )
+})
+
+describe('src/entities quedó poblado por la slice user (CHANGE-14, D-9)', () => {
+  it('src/entities/.gitkeep ya no existe — la capa dejó de estar vacía', () => {
+    expect(existsSync(path.join(projectRoot, 'src/entities/.gitkeep'))).toBe(false)
+  })
+
+  it('src/entities/ contiene únicamente la slice user, sin otras slices', () => {
+    const entries = readdirSync(path.join(projectRoot, 'src/entities'))
+    expect(entries).toEqual(['user'])
+  })
+
+  it('src/entities/user/ contiene exactamente los módulos declarados por el design (D-2, D-8)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/entities/user')).sort()
+    expect(files).toEqual(
+      [
+        'index.ts',
+        path.join('model', 'loginSchema.ts'),
+        path.join('model', 'passwordRules.ts'),
+        path.join('model', 'registerSchema.ts'),
+        path.join('model', 'types.ts'),
+      ].sort(),
+    )
+  })
+})
+
+describe('src/shared/ui/ está poblado por CHANGE-15 (shared-ui-atoms)', () => {
+  it('contains exactly the five primitives from the roadmap, no .gitkeep leftover', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/shared/ui'))
+    expect(files.sort()).toEqual(
+      ['Button.tsx', 'Checkbox.tsx', 'Input.tsx', 'Modal.tsx', 'Spinner.tsx'].sort(),
+    )
+  })
 })
 
 describe('every .gitkeep is annotated with the change that will populate it (D-10)', () => {
