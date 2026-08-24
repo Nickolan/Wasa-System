@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import LandingPage from '@pages/LandingPage'
-import { useAuthStore } from '@app/stores/authStore'
+import { useAuthStore } from '@entities/user'
 
 function App() {
   // D-6: restores a persisted session, if any is still valid, from the

@@ -808,6 +808,13 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - [x] `jwtIsExpired(token)` retorna true si el claim `exp` está en el pasado.
   - [x] `tsc --noEmit` sin errores en authStore y utils.
 
+> **Desviación registrada por CHANGE-16 (feature-auth, D-3/opción A, checkpoint 2026-08-23)**:
+> `authStore.ts` se reubicó de `src/app/stores/` a `src/entities/user/model/authStore.ts`
+> (exportado desde `entities/user/index.ts`). Motivo: `tests/fsd-boundaries.test.ts`
+> prohíbe que `features/` (y `widgets/`) importen de `app/`, y `useLogin`/`useRegister`
+> necesitan `authStore`. Sin cambio de comportamiento del store; ver `design.md` D-3 de
+> CHANGE-16 para el detalle completo.
+
 ---
 
 ### [CHANGE-14] `auth-zod-schemas`
@@ -884,7 +891,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-16] `feature-auth`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado
 - **Historias US**: HU-06-02, HU-06-03
 - **Scope**:
   - `src/features/auth/login/api/loginApi.ts`: POST /api/v1/auth/login → retorna

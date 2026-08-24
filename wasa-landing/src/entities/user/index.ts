@@ -5,6 +5,7 @@
 export { PASSWORD_MIN_LENGTH, PASSWORD_MAX_BYTES, utf8ByteLength } from './model/passwordRules'
 export { loginSchema } from './model/loginSchema'
 export { registerSchema } from './model/registerSchema'
+export { useAuthStore } from './model/authStore'
 export type {
   UserRegister,
   UserLogin,
