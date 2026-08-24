@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Primitivos de UI (`Button`, `Input`, `Checkbox`, `Spinner`, `Modal`) en `shared/ui/`, agnósticos del dominio WASA y reutilizables por cualquier feature o entidad sin conocimiento de auth ni de escaneo.
+
+## Requirements
 
 ### Requirement: Los primitivos de UI viven en `shared/` y son agnósticos del dominio
 

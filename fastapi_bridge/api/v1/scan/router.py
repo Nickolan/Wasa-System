@@ -1,19 +1,34 @@
-"""Router del dominio `scan` — sin operaciones registradas todavía (D-8).
+"""Router del dominio `scan` — borde HTTP del disparo de escaneos (CHANGE-12).
 
-Responsabilidad futura: `POST /start`, protegido anotando
-`user_email: CurrentUserEmail` (alias de `Depends(get_current_user)`
-declarado en `core/dependencies.py`, CHANGE-06, D-6) — no
-`Depends(oauth2_scheme)`, que devuelve el token sin validar. La firma de
-`get_current_user` ya existe y está probada (CHANGE-06): resuelve el email
-del usuario autenticado o lanza `HTTPException(401)` RFC 7807/6750, sin
-consultar la base de datos. Delegando toda lógica a `services/scan_service.py`.
-El Router NUNCA contiene lógica de negocio (regla dura del proyecto); sólo
-orquesta `Depends` y llama al Service.
+Expone `POST /start` (ruta absoluta `POST /api/v1/scan/start`, el prefijo ya
+está declarado en el `APIRouter`). El handler es cableado puro: `Depends` +
+una llamada al Service + un `JSONResponse`. El Router NUNCA contiene lógica
+de negocio (regla dura del proyecto): no construye infraestructura, no
+captura excepciones, no valida nada a mano.
 
-Este módulo existe para que el import y el prefijo ya estén decididos, pero
-`fastapi_bridge/main.py` NO lo monta (`include_router`) hasta CHANGE-12.
+`N8nUnavailableError` no se captura acá: se mapea a `502` por un
+`exception_handler` global registrado en `main.py` (D-2), no por un
+`try/except` local.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
+from starlette.responses import JSONResponse
+
+from fastapi_bridge.core.dependencies import get_current_user, get_scan_service
+from fastapi_bridge.core.limiter import scan_rate_limit
+from fastapi_bridge.schemas.scan_schemas import ScanRequest, ScanResponse
+from fastapi_bridge.services.scan_service import ScanService
 
 router = APIRouter(prefix="/api/v1/scan", tags=["scan"])
+
+
+@router.post("/start", status_code=202, response_model=ScanResponse)
+@scan_rate_limit
+async def start_scan(
+    request: Request,
+    scan_request: ScanRequest,
+    current_user: str = Depends(get_current_user),
+    service: ScanService = Depends(get_scan_service),
+) -> JSONResponse:
+    response = await service.start_scan(scan_request)
+    return JSONResponse(status_code=202, content=response.model_dump(mode="json"))

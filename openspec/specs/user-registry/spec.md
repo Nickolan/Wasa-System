@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Repositorio de acceso a la tabla `users` (`UserRepository`), con sesión inyectada y sin conocimiento de transacciones ni de configuración, como única superficie de persistencia de usuarios.
+
+## Requirements
 
 ### Requirement: Acceso a usuarios mediante un repositorio con sesión inyectada
 El acceso a la tabla `users` SHALL concentrarse en una única clase `UserRepository`, declarada en `fastapi_bridge/repositories/user_repository.py`, cuyo constructor recibe una `AsyncSession` ya abierta. El repositorio NO SHALL construir engines ni sesiones, NO SHALL leer la configuración del servicio y NO SHALL decidir cuándo empieza o termina una transacción: esas responsabilidades pertenecen a la Unit of Work que lo instancia. Todos sus métodos de acceso a datos SHALL ser asíncronos y SHALL declarar type hints completos.

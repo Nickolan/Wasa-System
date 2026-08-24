@@ -932,7 +932,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 > confluye `16` y `18`; `20` cierra la fase.
 
 ### [CHANGE-17] `scan-zod-schema`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` implementado
 - **Historias US**: HU-02-02, HU-02-03, HU-02-04, HU-02-05
 - **Scope**:
   - `src/entities/scan/model/types.ts`: ScanRequest, ScanResponse, ScanApiError
@@ -946,10 +946,18 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/06_funcionalidades.md` §HU-02-01 a HU-02-05
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-01 a RN-WS-05
 - **Criterios de Aceptación**:
-  - [ ] `scanSchema.parse({ target_url: "not-a-url", ... })` lanza ZodError.
-  - [ ] `scanSchema.parse({ ..., ethical_consent: false })` lanza ZodError.
-  - [ ] `scanSchema.parse({ target_url: "http://dvwa.local", phpsessid: "abc" })` usa defaults.
-  - [ ] `tsc --noEmit` sin errores.
+  - [x] `scanSchema.parse({ target_url: "not-a-url", ... })` lanza ZodError.
+  - [x] `scanSchema.parse({ ..., ethical_consent: false })` lanza ZodError.
+  - [x] `scanSchema.parse({ target_url: "http://dvwa.local", phpsessid: "abc" })` usa defaults.
+  - [x] `tsc --noEmit` sin errores.
+- **Notas de implementación** (ver `design.md` de este change para el detalle completo):
+  - Tres desviaciones deliberadas de la letra de este scope, todas resueltas a favor de las reglas de negocio y del contrato del Bridge, no de la escritura literal de arriba:
+    - `target_url` usa un único `.refine()` que subsume `url()` y restringe el esquema a `http:`/`https:` (D-1) — no `url().refine(...)` encadenado, que produce dos issues sobre el mismo campo y no cierra por sí solo `ftp:`/`file:`/`javascript:` (RN-WS-02).
+    - `phpsessid` usa `trim().min(1)`, no `min(1).trim()` (D-3) — el orden inverso deja pasar una cadena de solo espacios como `""` (RN-WS-03).
+    - `sqlmap_level`/`sqlmap_risk` **rechazan** el valor fuera de rango en vez de recortarlo ("clamping") — HU-02-04 mencionaba clamping, pero RN-WS-04/05 y `scan-payload-contract` exigen rechazo; se resolvió a favor del rechazo, alineado con el Bridge (D-5, Open Question 1 de `design.md`, confirmada por el usuario antes del `apply`).
+  - Se agregó `src/entities/scan/index.ts` como API pública de la slice (no estaba listado en el scope original, sigue el mismo patrón que `entities/user`, D-8 de CHANGE-14).
+  - **Nota de traspaso a CHANGE-18**: sin `z.coerce.number()` en los campos SQLMap (D-6) — el formulario debe registrar `sqlmap_level`/`sqlmap_risk` con `valueAsNumber: true` (o usar un `<select>` de valores numéricos), o un `<input type="number">` sin esa opción entregará un string que la validación rechazará.
+  - **Nota de traspaso a CHANGE-18**: `ScanApiError` (nuevo) y `AuthApiError` (`entities/user`, CHANGE-14) están deliberadamente duplicados por ahora — FSD no permite que una slice de `entities/` importe otra — con un guard de tipo entre slices en `tests/scan-schema.test.ts`. Ese guard NO es un enforcement real de CI: `tsconfig.app.json` solo incluye `src/`, así que ni `npm run build` ni `npm run test:run` lo compilan — solo se ve como error en un editor con TS language server activo (verificado: cambiar el tipo de un campo pasa build y tests sin aviso). La unificación real en un `ProblemDetails` de `shared/api/` queda pendiente para cuando CHANGE-18 cree `axiosInstance.ts` (D-8, Open Question 2 de `design.md`).
 
 ---
 

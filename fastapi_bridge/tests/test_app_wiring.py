@@ -31,14 +31,36 @@ def test_limiter_is_not_mistaken_for_infrastructure_engine_or_client():
     assert type(app.state.limiter).__name__ not in {"Engine", "AsyncEngine", "Client", "AsyncClient"}
 
 
-def test_no_production_route_has_a_rate_limit_applied():
-    # D-8: el límite se aplica sólo vía decorador sobre rutas específicas.
-    # La app de producción (sin routers de dominio montados) no tiene
-    # ninguna ruta marcada para limitación: ni límites estáticos ni
-    # dinámicos (el callable `scan_rate_limit`) registrados en el Limiter.
-    app = create_app()
-    assert app.state.limiter._route_limits == {}
-    assert app.state.limiter._dynamic_route_limits == {}
+def test_scan_start_is_the_only_production_route_with_a_rate_limit_applied():
+    # CHANGE-12 (D-5, R-2): `scan_rate_limit` queda atado, desde el import de
+    # `core/limiter.py`, al singleton de módulo `limiter` -- no a la
+    # instancia nueva que `create_app()` publica en `app.state.limiter`. Este
+    # test reemplaza al anterior (`test_no_production_route_has_a_rate_limit_applied`),
+    # que inspeccionaba `app.state.limiter` y por eso seguiría verde aunque
+    # el decorador se olvidara sobre el endpoint -- pasaba por vacuidad, no
+    # porque protegiera nada (R-2). Se reescribe para inspeccionar el
+    # singleton real y afirmar que la única ruta de producción marcada ahí
+    # es el disparo de escaneo.
+    # No se compara el conjunto completo de `_dynamic_route_limits` contra
+    # `{scan_key}`: ese registro no se limpia con `limiter.reset()` (mismo
+    # hallazgo que documenta `test_rate_limit.py`) y persiste entre módulos
+    # de test dentro de la misma sesión de pytest -- otros tests (p. ej.
+    # `test_edge_policy_exclusions.py`) montan sus propias rutas desechables
+    # decoradas con `scan_rate_limit` y sus claves quedan en el singleton
+    # después de terminar. El aserto que sí es robusto y es el que importa
+    # para R-2/D-5 es sobre las rutas de PRODUCCIÓN: ninguna ruta del árbol
+    # `fastapi_bridge.api.*` de producción, salvo `start_scan`, aparece
+    # registrada ahí.
+    from fastapi_bridge.core.limiter import limiter as production_limiter
+
+    create_app()
+    assert production_limiter._route_limits == {}
+    dynamic_keys = set(production_limiter._dynamic_route_limits.keys())
+    scan_keys = {key for key in dynamic_keys if "start_scan" in key}
+    assert len(scan_keys) == 1
+
+    production_api_keys = {key for key in dynamic_keys if key.startswith("fastapi_bridge.api.")}
+    assert production_api_keys == scan_keys
 
 
 # ---------------------------------------------------------------------------
@@ -86,11 +108,14 @@ def test_registration_does_not_depend_on_module_state():
         assert expected.issubset(set(app.exception_handlers.keys()))
 
 
-def test_route_surface_includes_health_and_auth_but_not_scan():
+def test_route_surface_includes_health_auth_and_scan():
     # CHANGE-05: registrar los manejadores no monta rutas por sí solo -- lo
     # que monta el router de auth es `include_router` en `create_app()`. La
-    # superficie vigente es health + las dos rutas de auth; scan sigue sin
-    # montarse hasta CHANGE-12.
+    # superficie vigente hasta CHANGE-11 era health + las dos rutas de auth,
+    # con scan todavía sin montar. CHANGE-12 monta `POST /api/v1/scan/start`:
+    # este test reemplaza al anterior (`test_route_surface_includes_health_and_auth_but_not_scan`),
+    # cuyo nombre y aserto de exclusión de scan quedaron desmentidos por ese
+    # montaje -- se renombra porque afirma lo contrario a partir de ahora.
     #
     # Se lee desde `app.openapi()["paths"]`, no desde `app.routes`: esta
     # versión de FastAPI resuelve `include_router` de forma perezosa (un
@@ -103,7 +128,7 @@ def test_route_surface_includes_health_and_auth_but_not_scan():
     paths = set(app.openapi()["paths"].keys())
     assert "/health" in paths
     domain_paths = {p for p in paths if p.startswith("/api/")}
-    assert domain_paths == {"/api/v1/auth/register", "/api/v1/auth/login"}
+    assert domain_paths == {"/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/scan/start"}
 
 
 def test_health_endpoint_still_returns_200_with_its_exact_contract():
@@ -118,10 +143,13 @@ def test_health_endpoint_still_returns_200_with_its_exact_contract():
     assert response.json() == {"status": "ok", "service": "wasa-fastapi-bridge"}
 
 
-def test_still_unmounted_scan_route_returns_404_in_rfc7807_format():
-    # CHANGE-05: el router de auth ya está montado, así que este ancla se
-    # traslada a scan -- el que sigue sin montarse hasta CHANGE-12 y sigue
-    # dando 404 en formato RFC 7807, no el cuerpo por defecto de Starlette.
+def test_scan_route_without_credentials_returns_401_in_rfc7807_format():
+    # CHANGE-12: el router de scan ya está montado y protegido. Este test
+    # reemplaza al anterior (`test_still_unmounted_scan_route_returns_404_in_rfc7807_format`),
+    # cuyo nombre y aserto de 404 quedaron desmentidos por este change -- la
+    # ruta existe ahora, así que una solicitud sin credencial ya no es "no
+    # encontrado" sino "no autorizado", y sigue en formato RFC 7807 (no el
+    # cuerpo por defecto de Starlette/FastAPI).
     from fastapi.testclient import TestClient
 
     app = create_app()
@@ -129,6 +157,7 @@ def test_still_unmounted_scan_route_returns_404_in_rfc7807_format():
 
     response = client.post("/api/v1/scan/start")
 
-    assert response.status_code == 404
+    assert response.status_code == 401
+    assert response.status_code != 404
     body = response.json()
     assert set(body.keys()) == {"type", "title", "status", "detail", "instance"}

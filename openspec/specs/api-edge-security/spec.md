@@ -120,9 +120,9 @@ Cuando una solicitud es rechazada por exceder el límite de tasa, la respuesta S
 - **WHEN** se inspecciona el cuerpo de la respuesta `429`
 - **THEN** no contiene stack traces, rutas de archivos del servidor ni nombres de módulos internos
 
-### Requirement: La política de borde no altera la superficie de API
+### Requirement: La política de borde no altera la superficie de API ya implementada
 
-Aplicar la política de borde SHALL ser transparente para el contrato de endpoints ya especificado: la política de CORS y el límite de tasa NO SHALL agregar, montar ni exponer ninguna ruta de aplicación por su cuenta, NO SHALL cambiar el código de estado ni el cuerpo de ninguna operación existente, y los endpoints de dominio cuyos changes todavía no se implementaron SHALL seguir sin estar disponibles. Montar un router SHALL ser siempre una decisión explícita del change que implementa sus operaciones.
+Aplicar la política de borde SHALL ser transparente para el contrato de endpoints ya especificado: la configuración de CORS, del límite de tasa y de los handlers de error NO SHALL agregar, montar ni exponer por sí misma ninguna ruta de aplicación, ni alterar el contrato de las ya expuestas. Una ruta de dominio SHALL aparecer en la superficie de API únicamente cuando el change que la implementa la monte explícitamente; los endpoints de dominio todavía no implementados SHALL seguir sin estar disponibles.
 
 #### Scenario: Health conserva su contrato exacto
 
@@ -134,10 +134,10 @@ Aplicar la política de borde SHALL ser transparente para el contrato de endpoin
 - **WHEN** se hacen `POST /api/v1/auth/register` y `POST /api/v1/auth/login` con la política de borde activa
 - **THEN** devuelven `201` y `200` respectivamente, con el mismo cuerpo que devolverían sin ella: la política de borde no interviene en su contrato
 
-#### Scenario: El router de scan sigue sin montarse
+#### Scenario: El disparo de escaneo está montado por su propio change, no por la política de borde
 
 - **WHEN** se hace `POST /api/v1/scan/start`
-- **THEN** la respuesta sigue siendo `404`, porque la política de borde no monta routers de dominio
+- **THEN** la ruta existe porque el change del borde HTTP del dominio scan la registró explícitamente, y la política de borde se aplica sobre ella (guard JWT + cupo por IP) sin haberla creado ni haber decidido su protección
 
 #### Scenario: Sin conexiones a infraestructura externa
 

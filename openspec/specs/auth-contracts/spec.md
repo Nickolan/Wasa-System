@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Contratos Pydantic v2 de entrada y salida del dominio auth (`UserRegister`, `UserLogin`, `TokenResponse`, `TokenData`), independientes del framework web y de la capa de persistencia.
+
+## Requirements
 
 ### Requirement: Contrato de registro de usuario
 El FastAPI Bridge SHALL definir el contrato de entrada del registro como un modelo Pydantic v2 `UserRegister` en `fastapi_bridge/schemas/auth_schemas.py`, con exactamente dos campos: `email` y `password`. El modelo SHALL validar sintácticamente el email en la frontera, antes de que ningún dato alcance la capa de persistencia, y SHALL declarar type hints explícitos en cada campo.
