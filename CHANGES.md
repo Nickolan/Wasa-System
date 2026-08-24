@@ -983,12 +983,17 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/06_funcionalidades.md` §HU-05-01 a HU-05-03
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-08
 - **Criterios de Aceptación**:
-  - [ ] submitScan adjunta automáticamente el JWT (via interceptor, no manual).
-  - [ ] Si el servidor retorna 401: authStore.logout() y mensaje "Sesión expirada". El muro de auth vuelve a aparecer.
-  - [ ] Submit válido (202): redirección a VITE_DASHBOARD_URL.
-  - [ ] Botón "Escanear" deshabilitado sin checkbox ético marcado.
-  - [ ] Spinner durante isLoading. No hay doble submit.
-  - [ ] `tsc --noEmit` sin errores.
+  - [x] submitScan adjunta automáticamente el JWT (via interceptor, no manual). — `tests/submit-scan.test.ts` (6.7: el módulo no menciona `Authorization`/token/`authStore` y aun así la solicitud lleva la cabecera cuando hay sesión) + `tests/api-client.test.ts` (D-1/D-3: el interceptor de `axiosInstance` adjunta la credencial por petición).
+  - [x] Si el servidor retorna 401: authStore.logout() y mensaje "Sesión expirada". El muro de auth vuelve a aparecer. — `tests/use-scan-form.test.tsx` (7.8: tras el 401 `useAuthStore.getState().isAuthenticated` queda en `false`, vía el interceptor — no el hook —, con `logout()` invocado una sola vez; 7.6: el mensaje mostrado es `SCAN_SUBMIT_MESSAGES.unauthorized`). El muro de auth en sí (que lee `authStore.isAuthenticated` para decidir qué mostrar) es scope de CHANGE-19 — acá se deja garantizado que la sesión efectivamente queda inválida, que es la señal de la que depende ese muro.
+  - [x] Submit válido (202): redirección a VITE_DASHBOARD_URL. — `tests/use-scan-form.test.tsx` (8.1: tras `SUCCESS_REDIRECT_DELAY_MS`, `window.location.href` es `dashboardUrl`; 8.5: `dashboardUrl` es distinto de `apiBaseUrl`) + `tests/scan-form.test.tsx` (la confirmación `SCAN_SUCCESS_MESSAGE` es visible en la interfaz **antes** de la navegación, y el control queda no enviable tras la aceptación — HU-05-01 "mensaje de éxito ~2s").
+  - [x] Botón "Escanear" deshabilitado sin checkbox ético marcado. — `tests/scan-form.test.tsx` (9.3: deshabilitado sin marcar, habilitado al marcar, deshabilitado de nuevo al desmarcar).
+  - [x] Spinner durante isLoading. No hay doble submit. — `tests/scan-form.test.tsx` (9.4: `Spinner` visible y botón deshabilitado durante el envío; un doble clic produce una sola solicitud) + `tests/use-scan-form.test.tsx` (7.5, guard con `useRef`).
+  - [x] `tsc --noEmit` sin errores. — `npx tsc -b` (equivalente de proyecto: `tsconfig.app.json` + `tsconfig.node.json` vía *build mode*) limpio; verificado también como parte de `npm run build`.
+- **Notas de traspaso a CHANGE-16 y CHANGE-19**:
+  - (a) El cliente HTTP (`src/shared/api/axiosInstance.ts`) y el contrato `ProblemDetails` (`src/shared/api/problemDetails.ts`) ya existen — CHANGE-16 los consume tal cual, sin modificarlos: `configureApiClient` ya está cableado desde `src/app/providers/httpClientProvider.ts` (punto único, verificado por test), y `AuthApiError` en `entities/user` ya es el alias `= ProblemDetails`.
+  - (b) El interceptor de response cierra sesión ante **cualquier** `401`, incluido el de un login fallido de CHANGE-16 (`POST /auth/login` con credenciales incorrectas). Es inocuo por spec (`auth-session-state`: "cerrar sesión sin sesión abierta es inocuo"), así que CHANGE-16 no necesita ninguna excepción por ruta — pero si en algún momento se quisiera excluir esa ruta, el punto donde hacerlo es el interceptor (`shared/api/axiosInstance.ts`), no el formulario de login. Ver R-3 de `design.md` de este change.
+  - (c) El mensaje del `429` no informa cuántos minutos faltan porque el `Retry-After` que emite el Bridge no está expuesto por CORS (`CORSMiddleware` en `fastapi_bridge/main.py` no lo declara en `expose_headers`). Es una limitación de backend, no del cliente — un change de backend que agregue `expose_headers=["Retry-After"]` habilitaría un mensaje específico sin tocar más que la constante del mensaje y el punto donde se lee el header. Ver R-1 de `design.md` de este change.
+  - (d) `<ScanForm />` ya resuelve por sí solo el feedback de aceptación: muestra `SCAN_SUCCESS_MESSAGE` (`role="status"`) durante `SUCCESS_REDIRECT_DELAY_MS` y deja el botón deshabilitado hasta que el navegador se va al Dashboard. CHANGE-19 lo monta tal cual dentro del `ScanFormWidget`: no tiene que agregar ni su propio cartel de éxito ni su propio bloqueo del botón.
 
 ---
 

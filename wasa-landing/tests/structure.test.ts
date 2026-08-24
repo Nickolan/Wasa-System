@@ -70,24 +70,23 @@ describe('cada pieza de dominio aparece únicamente en el change que la implemen
     expect(files).toEqual(['.gitkeep'])
   })
 
-  it.each(['src/shared/api'])(
-    '%s contains only .gitkeep',
-    (relativeDir) => {
-      const files = listFilesRecursively(path.join(projectRoot, relativeDir))
-      const nonGitkeep = files.filter((f) => path.basename(f) !== '.gitkeep')
-      expect(nonGitkeep).toEqual([])
-    },
-  )
 })
 
-describe('src/features quedó poblado por la slice auth (CHANGE-16, D-17)', () => {
+describe('src/shared/api/ quedó poblado por CHANGE-18 (D-13)', () => {
+  it('src/shared/api/ contiene exactamente los módulos declarados por el design (D-1..D-6)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/shared/api')).sort()
+    expect(files).toEqual(['axiosInstance.ts', 'problemDetails.ts'].sort())
+  })
+})
+
+describe('src/features quedó poblado por las slices auth (CHANGE-16) y scan-form (CHANGE-18)', () => {
   it('src/features/.gitkeep ya no existe — la capa dejó de estar vacía', () => {
     expect(existsSync(path.join(projectRoot, 'src/features/.gitkeep'))).toBe(false)
   })
 
-  it('src/features/ contiene únicamente la slice auth, sin otras slices', () => {
+  it('src/features/ contiene únicamente las slices auth y scan-form, sin otras slices', () => {
     const entries = readdirSync(path.join(projectRoot, 'src/features'))
-    expect(entries).toEqual(['auth'])
+    expect(entries).toEqual(['auth', 'scan-form'])
   })
 
   it('src/features/auth/ contiene exactamente los módulos declarados por el design (D-1)', () => {
@@ -105,6 +104,18 @@ describe('src/features quedó poblado por la slice auth (CHANGE-16, D-17)', () =
         path.join('register', 'api', 'registerApi.ts'),
         path.join('register', 'model', 'useRegister.ts'),
         path.join('register', 'ui', 'RegisterForm.tsx'),
+      ].sort(),
+    )
+  })
+
+  it('src/features/scan-form contiene exactamente los módulos declarados por el design (D-6..D-11)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/features/scan-form')).sort()
+    expect(files).toEqual(
+      [
+        'index.ts',
+        path.join('api', 'submitScan.ts'),
+        path.join('model', 'useScanForm.ts'),
+        path.join('ui', 'ScanForm.tsx'),
       ].sort(),
     )
   })
