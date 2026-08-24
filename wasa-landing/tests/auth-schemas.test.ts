@@ -52,20 +52,30 @@ describe('entities/user es modelo puro: sin UI ni entrada/salida (requerimiento 
   const userSliceRoot = path.resolve(__dirname, '../src/entities/user')
   const files = listFilesRecursively(userSliceRoot)
 
+  // CHANGE-16 (D-3/opción A, checkpoint 2026-08-23): authStore.ts se reubicó
+  // a esta slice como estado de dominio compartido entre features, y
+  // entities/user/index.ts lo re-exporta como parte de su API pública. Ambos
+  // quedan exceptuados de las reglas de pureza de abajo — son precisamente
+  // el store y su punto de re-exportación, no una fuga de dependencia hacia
+  // ellos. El resto de la slice (schemas, tipos) sigue sin poder depender
+  // del store ni de localStorage.
+  const storeFile = path.join('model', 'authStore.ts')
+  const filesExemptFromStoreImportCheck = new Set([storeFile, 'index.ts'])
+  const filesExemptFromLocalStorageCheck = new Set([storeFile])
+
   // Imports reales (no comentarios): un import de "react-hook-form" no debe
   // confundirse con un import de "react". Se resuelve con el parser de TS
   // que ya usa fsd-boundaries.test.ts, no con una búsqueda de texto libre.
   const forbiddenImportPatterns: Array<{ label: string; pattern: RegExp }> = [
     { label: 'React', pattern: /^react$/i },
     { label: 'cliente HTTP (axios)', pattern: /^axios$/i },
-    { label: 'store de sesión (authStore)', pattern: /authStore/i },
   ]
 
   it('la slice tiene al menos un archivo (guarda contra un false-negative por directorio vacío)', () => {
     expect(files.length).toBeGreaterThan(0)
   })
 
-  it.each(files)('%s no importa React, un cliente HTTP ni el store de sesión', (relativeFile) => {
+  it.each(files)('%s no importa React ni un cliente HTTP', (relativeFile) => {
     const source = readFileSync(path.join(userSliceRoot, relativeFile), 'utf-8')
     const imports = getImportedModules(source)
     const hits = forbiddenImportPatterns.filter(({ pattern }) =>
@@ -74,10 +84,22 @@ describe('entities/user es modelo puro: sin UI ni entrada/salida (requerimiento 
     expect(hits.map((h) => h.label)).toEqual([])
   })
 
-  it.each(files)('%s no menciona localStorage', (relativeFile) => {
-    const source = readFileSync(path.join(userSliceRoot, relativeFile), 'utf-8')
-    expect(source).not.toMatch(/localStorage/)
-  })
+  it.each(files.filter((f) => !filesExemptFromStoreImportCheck.has(f)))(
+    '%s no importa el store de sesión (authStore)',
+    (relativeFile) => {
+      const source = readFileSync(path.join(userSliceRoot, relativeFile), 'utf-8')
+      const imports = getImportedModules(source)
+      expect(imports.some((specifier) => /authStore/i.test(specifier))).toBe(false)
+    },
+  )
+
+  it.each(files.filter((f) => !filesExemptFromLocalStorageCheck.has(f)))(
+    '%s no menciona localStorage',
+    (relativeFile) => {
+      const source = readFileSync(path.join(userSliceRoot, relativeFile), 'utf-8')
+      expect(source).not.toMatch(/localStorage/)
+    },
+  )
 })
 
 describe('UserRegisterRequest: la confirmación no viaja al Bridge (extra="forbid")', () => {

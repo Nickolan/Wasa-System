@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '@app/App'
-import { useAuthStore } from '@app/stores/authStore'
+import { useAuthStore } from '@entities/user'
 import { makeJwtExpiringIn } from './support/jwt'
 
 const initialState = useAuthStore.getState()

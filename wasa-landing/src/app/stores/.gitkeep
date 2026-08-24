@@ -1,0 +1,1 @@
+# CHANGE-16 — authStore reubicado a entities/user/model/ (D-3/A); directorio queda como punto de extensión para futuros stores de app/

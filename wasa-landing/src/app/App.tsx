@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import LandingPage from '@pages/LandingPage'
-import { useAuthStore } from '@app/stores/authStore'
+import { useAuthStore } from '@entities/user'
 import { wireHttpClient } from '@app/providers/httpClientProvider'
 
 function App() {

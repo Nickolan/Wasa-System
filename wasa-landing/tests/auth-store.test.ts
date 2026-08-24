@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useAuthStore } from '@app/stores/authStore'
+import { useAuthStore } from '@entities/user'
 import { makeJwtExpiringIn } from './support/jwt'
 import { withThrowingStorage } from './support/storage'
 

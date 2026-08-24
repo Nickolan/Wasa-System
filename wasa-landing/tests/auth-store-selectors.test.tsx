@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react'
 import { act } from 'react'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useAuthStore } from '@app/stores/authStore'
+import { useAuthStore } from '@entities/user'
 
 const initialState = useAuthStore.getState()
 

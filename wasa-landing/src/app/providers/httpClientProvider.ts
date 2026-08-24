@@ -1,10 +1,10 @@
 import { configureApiClient } from '@shared/api/axiosInstance'
-import { useAuthStore } from '@app/stores/authStore'
+import { useAuthStore } from '@entities/user'
 
 /**
  * Único punto de cableado entre el cliente HTTP compartido y el estado de
  * sesión de la aplicación (D-1, D-2, D-3 de design.md). `shared/api/` no
- * puede importar `@app/stores/authStore` sin violar la dirección de capas
+ * puede importar `@entities/user` sin violar la dirección de capas
  * de FSD; este módulo vive en `app/` — la capa que sí puede conocer ambos —
  * y es quien conecta uno con el otro.
  *

@@ -61,31 +61,61 @@ describe('roadmap-committed subdirectories exist', () => {
 })
 
 describe('cada pieza de dominio aparece únicamente en el change que la implementa (CHANGE-13)', () => {
-  it('src/app/stores/authStore.ts exists', () => {
-    expect(existsSync(path.join(projectRoot, 'src/app/stores/authStore.ts'))).toBe(true)
+  it('src/app/stores/authStore.ts no longer exists (reubicado a entities/user, CHANGE-16 D-3/A)', () => {
+    expect(existsSync(path.join(projectRoot, 'src/app/stores/authStore.ts'))).toBe(false)
   })
 
-  it('src/app/stores/ contains no other store besides authStore.ts', () => {
+  it('src/app/stores/ contains only .gitkeep (authStore.ts se reubicó a entities/user, CHANGE-16 D-3/A)', () => {
     const files = listFilesRecursively(path.join(projectRoot, 'src/app/stores'))
-    expect(files).toEqual(['authStore.ts'])
+    expect(files).toEqual(['.gitkeep'])
   })
 
 })
 
-describe('src/shared/api/ y src/features/ quedaron poblados por CHANGE-18 (D-13)', () => {
+describe('src/shared/api/ quedó poblado por CHANGE-18 (D-13)', () => {
   it('src/shared/api/ contiene exactamente los módulos declarados por el design (D-1..D-6)', () => {
     const files = listFilesRecursively(path.join(projectRoot, 'src/shared/api')).sort()
     expect(files).toEqual(['axiosInstance.ts', 'problemDetails.ts'].sort())
   })
+})
 
-  it('src/features/ contiene exactamente la slice scan-form declarada por el design (D-6..D-11)', () => {
-    const files = listFilesRecursively(path.join(projectRoot, 'src/features')).sort()
+describe('src/features quedó poblado por las slices auth (CHANGE-16) y scan-form (CHANGE-18)', () => {
+  it('src/features/.gitkeep ya no existe — la capa dejó de estar vacía', () => {
+    expect(existsSync(path.join(projectRoot, 'src/features/.gitkeep'))).toBe(false)
+  })
+
+  it('src/features/ contiene únicamente las slices auth y scan-form, sin otras slices', () => {
+    const entries = readdirSync(path.join(projectRoot, 'src/features'))
+    expect(entries).toEqual(['auth', 'scan-form'])
+  })
+
+  it('src/features/auth/ contiene exactamente los módulos declarados por el design (D-1)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/features/auth')).sort()
     expect(files).toEqual(
       [
-        path.join('scan-form', 'index.ts'),
-        path.join('scan-form', 'api', 'submitScan.ts'),
-        path.join('scan-form', 'model', 'useScanForm.ts'),
-        path.join('scan-form', 'ui', 'ScanForm.tsx'),
+        'index.ts',
+        path.join('lib', 'authErrors.ts'),
+        path.join('lib', 'authHttp.ts'),
+        path.join('lib', 'authMessages.ts'),
+        path.join('lib', 'useAuthFormSubmit.ts'),
+        path.join('login', 'api', 'loginApi.ts'),
+        path.join('login', 'model', 'useLogin.ts'),
+        path.join('login', 'ui', 'LoginForm.tsx'),
+        path.join('register', 'api', 'registerApi.ts'),
+        path.join('register', 'model', 'useRegister.ts'),
+        path.join('register', 'ui', 'RegisterForm.tsx'),
+      ].sort(),
+    )
+  })
+
+  it('src/features/scan-form contiene exactamente los módulos declarados por el design (D-6..D-11)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/features/scan-form')).sort()
+    expect(files).toEqual(
+      [
+        'index.ts',
+        path.join('api', 'submitScan.ts'),
+        path.join('model', 'useScanForm.ts'),
+        path.join('ui', 'ScanForm.tsx'),
       ].sort(),
     )
   })
@@ -101,11 +131,12 @@ describe('src/entities quedó poblado por la slice user (CHANGE-14, D-9)', () =>
     expect(entries).toEqual(['scan', 'user'])
   })
 
-  it('src/entities/user/ contiene exactamente los módulos declarados por el design (D-2, D-8)', () => {
+  it('src/entities/user/ contiene exactamente los módulos declarados por el design (D-2, D-8; CHANGE-16 D-3/A suma authStore.ts)', () => {
     const files = listFilesRecursively(path.join(projectRoot, 'src/entities/user')).sort()
     expect(files).toEqual(
       [
         'index.ts',
+        path.join('model', 'authStore.ts'),
         path.join('model', 'loginSchema.ts'),
         path.join('model', 'passwordRules.ts'),
         path.join('model', 'registerSchema.ts'),
