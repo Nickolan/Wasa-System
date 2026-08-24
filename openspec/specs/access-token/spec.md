@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Contrato de emisión y decodificación de JSON Web Tokens de acceso: firma HS256 con la clave de `Settings.JWT_SECRET`, expiración derivada de `Settings.TOKEN_EXPIRE_HOURS`, y decodificación que nunca propaga excepciones ni revela el motivo del rechazo.
+
+## Requirements
 
 ### Requirement: Emisión de un JWT firmado con la clave de la configuración
 El servicio SHALL exponer en `fastapi_bridge/core/security.py` una operación que emite un JSON Web Token firmado con HS256, a partir de un conjunto de claims y de una duración. La clave de firma SHALL provenir exclusivamente de `Settings.JWT_SECRET` y SHALL llegar a la operación por parámetro, nunca leída de un global ni hardcodeada. El token emitido SHALL incluir la marca de vencimiento y la marca de emisión además de los claims recibidos.

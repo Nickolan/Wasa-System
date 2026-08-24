@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Utilidades puras y agnósticas del dominio en `shared/lib/utils.ts` (fusión de clases Tailwind con `cn`, verificación de expiración de JWT con `jwtIsExpired`), sin estado de módulo ni dependencias de capas FSD superiores.
+
+## Requirements
 
 ### Requirement: Las utilidades compartidas son funciones puras sin dominio
 

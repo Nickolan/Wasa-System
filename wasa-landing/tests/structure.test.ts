@@ -85,9 +85,9 @@ describe('src/entities quedó poblado por la slice user (CHANGE-14, D-9)', () =>
     expect(existsSync(path.join(projectRoot, 'src/entities/.gitkeep'))).toBe(false)
   })
 
-  it('src/entities/ contiene únicamente la slice user, sin otras slices', () => {
+  it('src/entities/ contiene únicamente las slices scan y user, sin otras (D-9 de CHANGE-17)', () => {
     const entries = readdirSync(path.join(projectRoot, 'src/entities'))
-    expect(entries).toEqual(['user'])
+    expect(entries).toEqual(['scan', 'user'])
   })
 
   it('src/entities/user/ contiene exactamente los módulos declarados por el design (D-2, D-8)', () => {
@@ -100,6 +100,15 @@ describe('src/entities quedó poblado por la slice user (CHANGE-14, D-9)', () =>
         path.join('model', 'registerSchema.ts'),
         path.join('model', 'types.ts'),
       ].sort(),
+    )
+  })
+})
+
+describe('src/entities/scan/ quedó poblado por CHANGE-17 (D-9)', () => {
+  it('src/entities/scan/ contiene exactamente los módulos declarados por el design (D-7, D-8, D-11)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/entities/scan')).sort()
+    expect(files).toEqual(
+      ['index.ts', path.join('model', 'scanSchema.ts'), path.join('model', 'types.ts')].sort(),
     )
   })
 })
