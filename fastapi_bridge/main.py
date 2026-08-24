@@ -35,12 +35,15 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 
 from fastapi_bridge.api.v1.auth.router import router as auth_router
+from fastapi_bridge.api.v1.scan.router import router as scan_router
 from fastapi_bridge.core.limiter import build_limiter
 from fastapi_bridge.core.settings import Settings, get_settings
 from fastapi_bridge.exceptions.domain import DomainError
+from fastapi_bridge.exceptions.errors import N8nUnavailableError
 from fastapi_bridge.exceptions.handlers import (
     domain_error_handler,
     http_exception_handler,
+    n8n_unavailable_handler,
     rate_limit_exceeded_handler,
     request_validation_exception_handler,
     unhandled_exception_handler,
@@ -128,16 +131,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(DomainError, domain_error_handler)
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+    # CHANGE-12, D-2: N8nUnavailableError no es un DomainError (vive en
+    # exceptions/errors.py) -- se registra con su propio handler, antes del
+    # catch-all genérico.
+    app.add_exception_handler(N8nUnavailableError, n8n_unavailable_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         return HealthResponse(status="ok", service="wasa-fastapi-bridge")
 
-    # CHANGE-05 (D-12): sin `prefix` acá -- el router ya lo declara
-    # (`/api/v1/auth`) en `api/v1/auth/router.py`. El de scan (`api/v1/scan`)
-    # sigue sin montarse hasta CHANGE-12.
+    # CHANGE-05 (D-12) / CHANGE-12: sin `prefix` acá en ninguno de los dos --
+    # cada router ya declara el suyo (`/api/v1/auth`, `/api/v1/scan`).
     app.include_router(auth_router)
+    app.include_router(scan_router)
 
     return app
 

@@ -144,9 +144,12 @@ async def test_register_prefix_is_not_duplicated(auth_client: httpx.AsyncClient)
     assert response.status_code == 404
 
 
-async def test_application_route_surface_is_exactly_health_and_auth(auth_app):
+async def test_application_route_surface_is_exactly_health_auth_and_scan(auth_app):
+    # CHANGE-12 monta `POST /api/v1/scan/start`. Este test reemplaza al
+    # anterior (`test_application_route_surface_is_exactly_health_and_auth`),
+    # cuyo aserto de superficie exacta quedó desmentido por ese montaje.
     paths = set(auth_app.openapi()["paths"].keys())
-    assert paths == {"/health", "/api/v1/auth/register", "/api/v1/auth/login"}
+    assert paths == {"/health", "/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/scan/start"}
 
 
 # ---------------------------------------------------------------------------
