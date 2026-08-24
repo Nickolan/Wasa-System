@@ -578,7 +578,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-07] `rfc7807-exception-handlers`
-- **Estado**: `[x]` completado
+- **Estado**: `[x]` archivado (2026-08-23)
 - **Historias US**: HU-03-07
 - **Scope**:
   - `exceptions/handlers.py`: handler `RequestValidationError` → 400/422 RFC 7807; handler
@@ -592,11 +592,12 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-09, §Dominio: Excepciones globales
   - `knowledge-base/06_funcionalidades.md` §HU-03-07
 - **Criterios de Aceptación**:
-  - [ ] Error de validación Pydantic produce JSON RFC 7807 con type/title/status/detail/instance.
-  - [ ] Error 429 produce RFC 7807 con header `Retry-After`.
-  - [ ] Error 500 produce RFC 7807 con mensaje genérico (sin stack trace).
-  - [ ] El campo `instance` refleja el path del endpoint que falló.
-  - [ ] Los errores 401 y 409 también pasan por el handler.
+  - [x] Error de validación Pydantic produce JSON RFC 7807 con type/title/status/detail/instance.
+  - [x] Error 429 produce RFC 7807 con header `Retry-After`.
+  - [x] Error 500 produce RFC 7807 con mensaje genérico (sin stack trace).
+  - [x] El campo `instance` refleja el path del endpoint que falló.
+  - [x] Los errores 401 y 409 también pasan por el handler.
+- **Archivado en**: `openspec/changes/archive/2026-08-23-rfc7807-exception-handlers/`.
 - **⚠️ Traspaso de CHANGE-03 (`user-repository`, D-1, D-2)**: `EmailAlreadyExistsError`
   (`fastapi_bridge/exceptions/domain.py`) debe mapearse a **409 Conflict** vía
   `problem_detail_response(...)` de `exceptions/handlers.py`, usando `exc.email` (el email
@@ -741,7 +742,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-12] `scan-router-protected`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` archivado (2026-08-23)
 - **Historias US**: HU-03-03, HU-03-04, HU-03-05, HU-03-06
 - **Scope**:
   - `api/v1/scan/router.py`: APIRouter con prefix `/api/v1/scan`
@@ -767,13 +768,14 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-06, RN-WS-11
   - `knowledge-base/07_flujos_principales.md` §Flujo 3: Escaneo
 - **Criterios de Aceptación**:
-  - [ ] POST con JWT válido y body válido: 202 + ScanResponse JSON.
-  - [ ] POST sin JWT: 401 RFC 7807.
-  - [ ] POST con JWT expirado: 401 RFC 7807.
-  - [ ] POST con body inválido (y JWT válido): 400/422 RFC 7807.
-  - [ ] POST desde IP con rate limit excedido: 429 RFC 7807.
-  - [ ] POST cuando n8n no responde: 502 RFC 7807.
-  - [ ] La documentación Swagger en `/docs` muestra el endpoint con el lock de auth.
+  - [x] POST con JWT válido y body válido: 202 + ScanResponse JSON.
+  - [x] POST sin JWT: 401 RFC 7807.
+  - [x] POST con JWT expirado: 401 RFC 7807.
+  - [x] POST con body inválido (y JWT válido): 400/422 RFC 7807.
+  - [x] POST desde IP con rate limit excedido: 429 RFC 7807.
+  - [x] POST cuando n8n no responde: 502 RFC 7807.
+  - [x] La documentación Swagger en `/docs` muestra el endpoint con el lock de auth.
+- **Archivado en**: `openspec/changes/archive/2026-08-23-change-12-scan-router-protected/`. Hallazgo de auditoría (severidad ALTA, spec `bridge-bootstrap` desactualizado tras CHANGE-05) corregido antes del archive; specs fusionados sin duplicados.
 
 ---
 
@@ -891,7 +893,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-16] `feature-auth`
-- **Estado**: `[x]` completado
+- **Estado**: `[x]` archivado (2026-08-24)
 - **Historias US**: HU-06-02, HU-06-03
 - **Scope**:
   - `src/features/auth/login/api/loginApi.ts`: POST /api/v1/auth/login → retorna
@@ -915,14 +917,15 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/06_funcionalidades.md` §HU-06-02, HU-06-03
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-12 a RN-WS-15
 - **Criterios de Aceptación**:
-  - [ ] Login exitoso (200): authStore.isAuthenticated = true.
-  - [ ] Login fallido (401): mensaje "Credenciales incorrectas." visible.
-  - [ ] Register exitoso (201): authStore.isAuthenticated = true.
-  - [ ] Register con email duplicado (409): mensaje "Este email ya está registrado."
-  - [ ] Register con password < 8 chars: error inline en el campo (client-side).
-  - [ ] Confirmación de password distinta: error inline (client-side).
-  - [ ] Botón muestra Spinner durante el request (no hay doble submit).
-  - [ ] `tsc --noEmit` sin errores.
+  - [x] Login exitoso (200): authStore.isAuthenticated = true.
+  - [x] Login fallido (401): mensaje "Credenciales incorrectas." visible.
+  - [x] Register exitoso (201): authStore.isAuthenticated = true.
+  - [x] Register con email duplicado (409): mensaje "Este email ya está registrado."
+  - [x] Register con password < 8 chars: error inline en el campo (client-side).
+  - [x] Confirmación de password distinta: error inline (client-side).
+  - [x] Botón muestra Spinner durante el request (no hay doble submit).
+  - [x] `tsc --noEmit` sin errores.
+- **Archivado en**: `openspec/changes/archive/2026-08-24-feature-auth/`.
 
 ---
 
@@ -962,7 +965,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 ---
 
 ### [CHANGE-18] `feature-scan-form`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` archivado (2026-08-24)
 - **Historias US**: HU-02-01 a HU-02-05, HU-03-04, HU-05-01 a HU-05-03
 - **Scope**:
   - `src/shared/api/axiosInstance.ts`: instancia Axios con baseURL = VITE_API_BASE_URL;
@@ -994,11 +997,12 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - (b) El interceptor de response cierra sesión ante **cualquier** `401`, incluido el de un login fallido de CHANGE-16 (`POST /auth/login` con credenciales incorrectas). Es inocuo por spec (`auth-session-state`: "cerrar sesión sin sesión abierta es inocuo"), así que CHANGE-16 no necesita ninguna excepción por ruta — pero si en algún momento se quisiera excluir esa ruta, el punto donde hacerlo es el interceptor (`shared/api/axiosInstance.ts`), no el formulario de login. Ver R-3 de `design.md` de este change.
   - (c) El mensaje del `429` no informa cuántos minutos faltan porque el `Retry-After` que emite el Bridge no está expuesto por CORS (`CORSMiddleware` en `fastapi_bridge/main.py` no lo declara en `expose_headers`). Es una limitación de backend, no del cliente — un change de backend que agregue `expose_headers=["Retry-After"]` habilitaría un mensaje específico sin tocar más que la constante del mensaje y el punto donde se lee el header. Ver R-1 de `design.md` de este change.
   - (d) `<ScanForm />` ya resuelve por sí solo el feedback de aceptación: muestra `SCAN_SUCCESS_MESSAGE` (`role="status"`) durante `SUCCESS_REDIRECT_DELAY_MS` y deja el botón deshabilitado hasta que el navegador se va al Dashboard. CHANGE-19 lo monta tal cual dentro del `ScanFormWidget`: no tiene que agregar ni su propio cartel de éxito ni su propio bloqueo del botón.
+- **Archivado en**: `openspec/changes/archive/2026-08-24-change-18-feature-scan-form/`, tras ciclo completo propose → apply → auditoría adversarial → corrección de hallazgos → archive con autorización explícita del usuario.
 
 ---
 
 ### [CHANGE-19] `landing-widgets`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` archivado (2026-08-24)
 - **Historias US**: HU-01-01 a HU-01-04, HU-06-01 a HU-06-03, HU-02-01
 - **Scope**:
   - `widgets/hero/HeroWidget.tsx`: CTA "Comenzar" — si autenticado hace scroll a
@@ -1019,19 +1023,20 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
   - `knowledge-base/03_actores_y_roles.md` §RBAC — Matriz de permisos
   - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-10
 - **Criterios de Aceptación**:
-  - [ ] HeroWidget CTA abre LoginModal si usuario no está autenticado.
-  - [ ] HeroWidget CTA hace scroll a #scan-form si está autenticado.
-  - [ ] LoginModal y RegisterModal se alternan via los links de cada form.
-  - [ ] Al login/register exitoso: el modal se cierra y el scan form aparece.
-  - [ ] ScanFormWidget no renderiza ningún campo del form si !isAuthenticated.
-  - [ ] El botón "Cerrar sesión" ejecuta authStore.logout() y muestra muro.
-  - [ ] Todos los widgets son responsive (375px y 1280px).
-  - [ ] `npm run build` sin errores.
+  - [x] HeroWidget CTA abre LoginModal si usuario no está autenticado.
+  - [x] HeroWidget CTA hace scroll a #scan-form si está autenticado.
+  - [x] LoginModal y RegisterModal se alternan via los links de cada form.
+  - [x] Al login/register exitoso: el modal se cierra y el scan form aparece.
+  - [x] ScanFormWidget no renderiza ningún campo del form si !isAuthenticated.
+  - [x] El botón "Cerrar sesión" ejecuta authStore.logout() y muestra muro.
+  - [x] Todos los widgets son responsive (375px y 1280px).
+  - [x] `npm run build` sin errores.
+- **Archivado en**: `openspec/changes/archive/2026-08-24-change-19-landing-widgets/`, tras ciclo completo propose → apply → auditoría adversarial exhaustiva → archive con autorización explícita del usuario.
 
 ---
 
 ### [CHANGE-20] `landing-page-composition`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` archivado (2026-08-24)
 - **Historias US**: HU-01-01 a HU-01-04, HU-06-01, HU-02-01
 - **Scope**:
   - `src/pages/LandingPage/index.tsx`: HeroWidget → FeaturesWidget → HowItWorksWidget →
@@ -1052,7 +1057,7 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 
 **Auditoría de re-validación (2026-08-24)**: dos defectos reales encontrados y corregidos —(A) los cinco tokens de color declaraban hex de Tailwind 3 sobre un proyecto con Tailwind 4 (paleta oklch), es decir colores que la interfaz no usa; corregidos a alias `var(--color-*)` de la paleta— y (B) el error de consola del favicon descrito arriba. Detalle completo en `openspec/changes/change-20-landing-page-composition/tasks.md` §8. Suite: **547 tests en verde** (52 archivos; los mismos 2 archivos con fallo de import preexistente y ajeno al change). `npm run lint` y `npm run build`: exit 0.
 
-Change listo para el gate manual de archivado (`/opsx:archive`) — pendiente de aprobación explícita del usuario en el turno.
+**Archivado en**: `openspec/changes/archive/2026-08-24-change-20-landing-page-composition/`, tras auditoría adversarial exitosa y autorización explícita del usuario en el turno. Specs sincronizados: `landing-shell` (nueva capability, 6 requirements) y `landing-composition` (7 requirements ADDED, 181→211 líneas); ambos pasan `openspec validate --strict`.
 
 ---
 
@@ -1084,7 +1089,7 @@ Change listo para el gate manual de archivado (`/opsx:archive`) — pendiente de
 ---
 
 ### [CHANGE-22] `e2e-smoke-test`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[~]` apply ejecutado, parcialmente verificado — 9/18 criterios PASS (4 completos, 5 con la mitad backend confirmada), 9 criterios pendientes de operador (requieren navegador interactivo, no disponible en la sesión de apply). Suite automatizado en verde (11/11), cero regresiones (backend 618 passed, frontend 548 passed, ambos idénticos al baseline). Evidencia completa y hallazgos en `openspec/changes/e2e-smoke-test/RESULTS.md`. Archivado **NO** ejecutado — pendiente de autorización explícita del usuario.
 - **Historias US**: Todas
 - **Scope**:
   - Validar el flujo completo incluyendo registro, login y scan (checklist de smoke test
@@ -1096,27 +1101,27 @@ Change listo para el gate manual de archivado (`/opsx:archive`) — pendiente de
   - `knowledge-base/07_flujos_principales.md` (todos los flujos)
   - `knowledge-base/06_funcionalidades.md` (todas las épicas)
   - `knowledge-base/03_actores_y_roles.md`
-- **Criterios de Aceptación (Smoke Test Checklist)**:
+- **Criterios de Aceptación (Smoke Test Checklist)** — veredicto detallado y evidencia en `openspec/changes/e2e-smoke-test/RESULTS.md`:
   - AUTENTICACIÓN:
-    - [ ] La Landing Page carga en < 3 segundos.
-    - [ ] El muro de auth es visible sin sesión activa.
-    - [ ] El formulario de escaneo NO es visible sin sesión.
-    - [ ] Registro con email nuevo → modal cierra → scan form visible.
-    - [ ] Email duplicado → mensaje "Este email ya está registrado."
-    - [ ] Login con credenciales incorrectas → mensaje "Credenciales incorrectas."
-    - [ ] Login correcto → modal cierra → scan form visible.
-    - [ ] Recarga de página con sesión activa → scan form sigue visible.
-    - [ ] Botón "Cerrar sesión" → muro de auth vuelve a aparecer.
+    - [ ] La Landing Page carga en < 3 segundos. — *pendiente-operador (requiere navegador)*
+    - [ ] El muro de auth es visible sin sesión activa. — *pendiente-operador*
+    - [ ] El formulario de escaneo NO es visible sin sesión. — *pendiente-operador*
+    - [ ] Registro con email nuevo → modal cierra → scan form visible. — *backend PASS (201 + token), UI pendiente-operador*
+    - [ ] Email duplicado → mensaje "Este email ya está registrado." — *backend PASS (409, RFC 7807), UI pendiente-operador*
+    - [ ] Login con credenciales incorrectas → mensaje "Credenciales incorrectas." — *backend PASS (401, anti-enumeración confirmada), UI pendiente-operador*
+    - [ ] Login correcto → modal cierra → scan form visible. — *backend PASS (200 + token), UI pendiente-operador*
+    - [ ] Recarga de página con sesión activa → scan form sigue visible. — *pendiente-operador*
+    - [ ] Botón "Cerrar sesión" → muro de auth vuelve a aparecer. — *pendiente-operador*
   - ESCANEO:
-    - [ ] El formulario valida campos inválidos antes de enviar.
-    - [ ] Botón "Escanear" deshabilitado sin checkbox ético.
-    - [ ] POST a /scan/start sin JWT: 401 en consola del navegador, mensaje visible.
-    - [ ] POST a /scan/start con JWT válido y body correcto: 202 en < 3 segundos.
-    - [ ] Redirección al Dashboard ocurre tras el 202.
-    - [ ] En n8n UI: el workflow aparece en execution history.
-    - [ ] En PostgreSQL db_fuzzing: SELECT en tabla users confirma el usuario registrado.
-    - [ ] En PostgreSQL db_fuzzing: SELECT en tabla scans confirma el escaneo iniciado.
-    - [ ] Rate limiting: solicitud 11 recibe 429 desde la misma IP.
+    - [ ] El formulario valida campos inválidos antes de enviar. — *pendiente-operador*
+    - [ ] Botón "Escanear" deshabilitado sin checkbox ético. — *pendiente-operador*
+    - [ ] POST a /scan/start sin JWT: 401 en consola del navegador, mensaje visible. — *backend PASS (401), mensaje visible en UI pendiente-operador*
+    - [x] POST a /scan/start con JWT válido y body correcto: 202 en < 3 segundos. — **PASS real**: `202`, `scan_id` UUID válido, `elapsed=1.038s`, escaneo real disparado contra `localhost:8081`.
+    - [ ] Redirección al Dashboard ocurre tras el 202. — *pendiente-operador*
+    - [ ] En n8n UI: el workflow aparece en execution history. — *pendiente-operador (evidencia indirecta vía fila en `scans`, no reemplaza la inspección visual)*
+    - [x] En PostgreSQL db_fuzzing: SELECT en tabla users confirma el usuario registrado. — **PASS real**: fila confirmada, `hashed_password` con prefijo bcrypt `$2b$`.
+    - [x] En PostgreSQL db_fuzzing: SELECT en tabla scans confirma el escaneo iniciado. — **PASS real**: fila confirmada por `id` monotónico tras el `202`.
+    - [x] Rate limiting: solicitud 11 recibe 429 desde la misma IP. — **PASS real**: 10×`202` + 1×`429`, fase aislada contra receptor local (D-5), cero escaneos reales adicionales.
 
 ---
 

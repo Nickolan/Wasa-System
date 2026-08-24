@@ -1,0 +1,46 @@
+# RESULTS — corrida de e2e-smoke-test (CHANGE-22)
+
+**Fecha:** 2026-08-24
+**Operador:** agente `openspec-apply-change` (turno de apply, autorizado explícitamente por el usuario)
+**Entorno:** máquina local del usuario — PostgreSQL `db_fuzzing` (localhost:5432), n8n (localhost:5678, Webhook Trigger de CHANGE-21 activo), FastAPI Bridge (`uvicorn`, localhost:8000), Landing Page como build de producción servido con `vite preview --port 5173`, aplicación vulnerable objetivo en `http://localhost:8081/`.
+
+**Resultado de `pytest` (fase automatizada, `WASA_E2E=1 pytest fastapi_bridge/tests/e2e -m e2e -v`):** **10 passed, 0 skipped, 0 failed** (auth + scan). Fase de rate limit aparte (`-m e2e_ratelimit`): **1 passed**. Total suite E2E: **11 passed, 0 failed**.
+
+**Regresión (antes/después de este change):**
+- Backend `pytest` (sin `WASA_E2E`): **618 passed** antes → **618 passed + 1 skipped** después (el 1 skipped es el paquete `tests/e2e/` completo, opt-in por diseño — no es una regresión).
+- Frontend `npm run test:run`: **548 passed** antes → **548 passed** después (2 archivos con fallo de import preexistente, sin relación con este change, sin cambios).
+
+## Tabla de 18 criterios de aceptación (CHANGE-22)
+
+| # | Criterio | Responsable | Veredicto | Evidencia |
+|---|---|---|---|---|
+| 1 | Landing Page carga en < 3 s | Runbook §5.1 (manual) | **PENDIENTE-OPERADOR** | No ejecutado: requiere navegador interactivo con DevTools, no disponible para este agente en esta sesión. |
+| 2 | Muro de auth visible sin sesión | Runbook §5.2 (manual) | **PENDIENTE-OPERADOR** | Ídem. |
+| 3 | Scan form NO visible sin sesión | Runbook §5.2 (manual) | **PENDIENTE-OPERADOR** | Ídem. |
+| 4 | Registro con email nuevo → modal cierra → scan form visible | Runbook §5.3 (manual) + `test_register_new_email_returns_201_and_token` (automatizado) | **PASS (parcial: backend)** / PENDIENTE-OPERADOR (UI) | Backend: `201`, `access_token` no vacío, `token_type == "bearer"`. UI (modal/formulario) no verificada — requiere navegador. |
+| 5 | Email duplicado → "Este email ya está registrado." | Runbook §5.4 (manual) + `test_register_duplicate_email_returns_409` (automatizado) | **PASS (parcial: backend)** / PENDIENTE-OPERADOR (UI) | Backend: `409`, `application/problem+json`, `title == "Conflict"`, `detail == "El email '<email>' ya está registrado."` (el mensaje de UI es una copia propia del frontend, distinta literal — no verificada). |
+| 6 | Login incorrecto → "Credenciales incorrectas." | Runbook §5.5 (manual) + `test_login_with_wrong_password_returns_401` (automatizado) | **PASS (parcial: backend)** / PENDIENTE-OPERADOR (UI) | Backend: `401`, `title == "Unauthorized"`, `detail == "email o contraseña incorrectos"` (literal fijo, sin email interpolado — anti-enumeración RN-WS-12 confirmada). |
+| 7 | Login correcto → modal cierra → scan form visible | Runbook §5.6 (manual) + `test_login_with_valid_credentials_returns_200_and_token` (automatizado) | **PASS (parcial: backend)** / PENDIENTE-OPERADOR (UI) | Backend: `200`, token utilizable (reusado con éxito en el recorrido de escaneo). |
+| 8 | Recarga con sesión activa → scan form sigue visible | Runbook §5.7 (manual) | **PENDIENTE-OPERADOR** | No ejecutado: requiere navegador. |
+| 9 | "Cerrar sesión" → vuelve el muro de auth | Runbook §5.8 (manual) | **PENDIENTE-OPERADOR** | No ejecutado: requiere navegador. |
+| 10 | El formulario valida campos inválidos | Runbook §5.9 (manual) | **PENDIENTE-OPERADOR** | No ejecutado: requiere navegador. |
+| 11 | Botón "Escanear" deshabilitado sin checkbox ético | Runbook §5.10 (manual) | **PENDIENTE-OPERADOR** | No ejecutado: requiere navegador. |
+| 12 | `POST /scan/start` sin JWT: `401` en consola, mensaje visible | `test_scan_without_jwt_returns_401` (automatizado) + Runbook §5.11 (manual, "mensaje visible") | **PASS (parcial: backend)** / PENDIENTE-OPERADOR (UI) | Backend: `401`, `detail == "No se proporcionó un token de autenticación."`. Adicional: `test_scan_with_invalid_jwt_returns_401` → `401`, `detail == "El token de autenticación no es válido o expiró."`. Mensaje visible en la interfaz no verificado (requiere navegador). |
+| 13 | `POST /scan/start` con JWT válido: `202` en < 3 s | `test_scan_with_valid_jwt_returns_202_under_3s` (automatizado) | **PASS** | `202`; `scan_id=7c282ff3-dfa4-4c1b-94e1-6ec5f264789d` (UUID válido); `elapsed=1.038s` (< 3.0s); `target_url=http://localhost:8081/`. Escaneo **real** disparado contra el objetivo local del operador (3 veces a lo largo de esta corrida completa del suite). |
+| 14 | Redirección al Dashboard tras el `202` | Runbook §5.12 (manual) | **PENDIENTE-OPERADOR** | No ejecutado: requiere navegador. El `202` que la dispararía sí está confirmado (criterio 13). |
+| 15 | n8n: la ejecución aparece en execution history | Runbook §5.13 (manual, UI de n8n) | **PENDIENTE-OPERADOR** | No inspeccionado visualmente en la UI de n8n. Evidencia **indirecta**: el webhook `POST /webhook/wasa-scan` respondió activo (ver criterio de infraestructura, tasks.md 1.2) y la fila en `scans` apareció después de cada uno de los 3 `202` (criterio 17) — consistente con que el workflow procesó las 3 solicitudes, pero no reemplaza la inspección visual del historial ni el id de ejecución que pide el runbook. |
+| 16 | PostgreSQL: `SELECT` en `users` confirma el usuario registrado | `test_registered_user_row_exists_in_db` (automatizado) | **PASS** | 1 fila para el email de la corrida; `hashed_password` con prefijo `$2b$` (bcrypt), distinto de la contraseña en claro. |
+| 17 | PostgreSQL: `SELECT` en `scans` confirma el escaneo iniciado | `test_scan_row_appears_in_shared_db` (automatizado) | **PASS** | Fila nueva confirmada por `id > max_id_before` (ancla monotónica, no por timestamp — ver nota de diseño en tasks.md 4.5); evidencia de la corrida final: `scans.id=153`, `target_url=http://localhost:8081/`. `scans` creció de 137 → 140 a lo largo de esta corrida completa (3 escaneos reales legítimos). |
+| 18 | Rate limiting: solicitud 11 desde la misma IP → `429` | `test_eleventh_request_returns_429` (automatizado, fase aislada D-5) | **PASS** | 10 primeras solicitudes → `202`; 11ª → `429`, `application/problem+json`, `status == 429`. Ejecutado contra un receptor local trivial (no un escaneo real, por diseño D-5); confirmado que `scans` no creció durante esta fase (`scans_count_before == scans_count_after`). |
+
+**Resumen:** 5 de 18 criterios **PASS** completo (13, 16, 17, 18 automatizados de punta a punta; ninguno 100% manual quedó ejecutado). 5 criterios más tienen su **mitad backend verificada automáticamente** (4, 5, 6, 7, 12) pero la mitad de interfaz/navegador queda pendiente. 9 criterios (1, 2, 3, 8, 9, 10, 11, 14, 15) son **enteramente manuales** y quedaron **pendientes de operador** por falta de herramienta de automatización de navegador en esta sesión — ningún criterio se firmó como PASS sin evidencia real, y ninguno se fabricó.
+
+## Hallazgos
+
+| Severidad | Descripción | Reproducción | Criterio afectado |
+|---|---|---|---|
+| Baja | `email-validator` (el motor detrás de `EmailStr` de Pydantic) rechaza **todo** el TLD `.test` (y `.invalid`, `.localhost`) como "special-use or reserved name", con independencia del subdominio. Esto es una discrepancia entre lo que RFC 2606 reserva para pruebas y lo que la librería de validación en uso acepta — no es un bug del Bridge (el 422 es el comportamiento correcto del validador), pero sí un dato a tener en cuenta para cualquier fixture o dato de prueba futuro que use `@algo.test`. | `curl -X POST .../register -d '{"email":"x@wasa.test","password":"..."}'` → `422`, `detail` menciona "special-use or reserved name". | No afecta directamente a ninguno de los 18 criterios (el suite se ajustó a `example.com` antes de firmar nada), documentado como hallazgo de entorno/tooling, no de producto. |
+| Baja | `vite.config.ts` no define `preview.port`; `npm run preview` sin flags sirve en `4173` por defecto, que **no** está en `CORS_ORIGINS` del Bridge (`http://localhost:5173` únicamente) — un operador que corra `npm run preview` a secas para este runbook vería fallos de CORS en el navegador sin un mensaje que apunte a la causa real. | `cd wasa-landing && npm run build && npm run preview` (sin `--port`) → sirve en `:4173`; cualquier request del frontend al Bridge falla por CORS. | Afecta la preparación de los criterios 1–15 (manuales): el runbook (`docs/e2e-smoke-test-runbook.md` §1) ya documenta el `--port 5173 --strictPort` explícito como mitigación; no se tocó `vite.config.ts` (fuera de alcance, Non-Goal 1). |
+| Informativo | El Schedule Trigger de n8n (que debe permanecer desactivado) no es verificable de forma no interactiva sin una API key de n8n configurada en el entorno de este agente. Se verificó indirectamente que el Webhook Trigger está activo (respuesta `LiveWebhooks`/mensaje de auth del workflow), pero el estado del Schedule Trigger específicamente queda sin confirmar en esta corrida. | — | Tasks.md 1.2; no bloquea ningún criterio de los 18 (ninguno depende del estado del Schedule Trigger), pero el operador debería confirmarlo en la UI de n8n antes de considerar la infraestructura "sana" en el sentido más amplio. |
+
+**Non-Goal 1 respetado:** ningún hallazgo de arriba fue corregido dentro de este change.

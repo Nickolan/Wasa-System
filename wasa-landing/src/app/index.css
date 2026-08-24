@@ -1,60 +1,145 @@
 @import "tailwindcss";
 
-/*
- * landing-shell (CHANGE-20, D-3, D-4): punto único de declaración de los
- * valores de diseño compartidos. `@theme` en lugar de `:root { --x: ... }` a
- * mano porque además de emitir las variables CSS reales, las integra al
- * sistema de utilidades de Tailwind — y sobreescribir `--font-sans` acá
- * reemplaza la pila que el *preflight* ya aplica a la raíz del documento, de
- * modo que la tipografía llega a los widgets por herencia sin editarlos.
- *
- * Los seis tokens son alias de valores YA presentes en la interfaz (D-4):
- * ningún color nuevo se introduce. Nombres semánticos, no nombres de color.
- *
- * Los cinco tokens de color se declaran como `var(--color-<paleta>)`, NO como
- * un literal hexadecimal: Tailwind 4 define su paleta en oklch y esos valores
- * no coinciden con los hex de Tailwind 3 (`red-500` es #fb2c36, no #ef4444;
- * `sky-600` es #0084d1, no #0284c7). Un literal escrito a mano sería una copia
- * que ya diverge de lo que la interfaz pinta — rompería tanto el requisito
- * "sin tokens huérfanos" como el "sin cambio visual". Referenciar la variable
- * de la paleta hace que el alias sea exacto por construcción, y Tailwind emite
- * la variable referenciada aunque ninguna utilidad la use.
- *
- * `@theme static` en lugar de `@theme`: Tailwind 4 sólo emite en el CSS
- * final las variables que detecta usadas por alguna utilidad presente en el
- * código escaneado (D-4 dice que sólo dos de los seis se consumen hoy). Sin
- * `static`, los otros cuatro quedarían declarados en la fuente pero
- * ausentes del CSS servido — no serían un "punto único de verdad"
- * inspeccionable, sólo una declaración muerta hasta el primer consumidor.
- * `static` los fuerza a existir siempre como custom properties reales.
- */
 @theme static {
   --font-sans:
     'Inter', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
     'Segoe UI Symbol', 'Noto Color Emoji';
 
-  /* slate-950 — el fondo que hoy pinta <main> en LandingPage */
+  /* slate-950 — el fondo base del documento */
   --color-surface-base: var(--color-slate-950);
-  /* slate-900 — el fondo de tarjetas y modales (Modal, Input) */
+  /* slate-900 — el fondo de tarjetas y modales */
   --color-surface-elevated: var(--color-slate-900);
-  /* sky-600 — el CTA del Hero y la variante primaria de Button */
+  /* sky-600 — el CTA y la variante primaria */
   --color-brand: var(--color-sky-600);
-  /* red-500 — bordes y mensajes de validación en error (Input) */
+  /* red-500 — bordes y mensajes de error */
   --color-danger: var(--color-red-500);
-  /* green-500 — el borde de campo válido (Input) */
+  /* green-500 — borde de campo válido */
   --color-success: var(--color-green-500);
 }
 
-/*
- * D-5: la superficie base sube al documento completo, no sólo a <main>. Sin
- * esto, entre la entrega del HTML y el montaje de React la pantalla queda
- * blanca (destello) y el área de sobre-desplazamiento también. El
- * `bg-slate-950` de <main> se queda donde está (redundante, inofensivo) para
- * no editar un archivo de CHANGE-19.
- */
 @layer base {
   html {
     background-color: var(--color-surface-base);
     color-scheme: dark;
+    scroll-behavior: smooth;
+  }
+}
+
+/* ── Animations ─────────────────────────────────────────────────────── */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes grid-fade {
+  from { opacity: 0; }
+  to { opacity: 0.03; }
+}
+
+@layer utilities {
+  .animate-fade-in-up {
+    animation: fade-in-up 0.6s ease-out both;
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.5s ease-out both;
+  }
+
+  .animate-glow-pulse {
+    animation: glow-pulse 3s ease-in-out infinite;
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animation-delay-100 { animation-delay: 100ms; }
+  .animation-delay-200 { animation-delay: 200ms; }
+  .animation-delay-300 { animation-delay: 300ms; }
+  .animation-delay-400 { animation-delay: 400ms; }
+  .animation-delay-500 { animation-delay: 500ms; }
+  .animation-delay-600 { animation-delay: 600ms; }
+
+  /* Glassmorphism card */
+  .glass-card {
+    background: linear-gradient(
+      135deg,
+      rgba(15, 23, 42, 0.8) 0%,
+      rgba(30, 41, 59, 0.6) 100%
+    );
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+  }
+
+  .glass-card:hover {
+    border-color: rgba(56, 189, 248, 0.3);
+    background: linear-gradient(
+      135deg,
+      rgba(15, 23, 42, 0.9) 0%,
+      rgba(30, 41, 59, 0.7) 100%
+    );
+  }
+
+  /* Glassmorphism navbar */
+  .glass-nav {
+    background: rgba(2, 6, 23, 0.7);
+    backdrop-filter: blur(16px) saturate(180%);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  }
+
+  /* Gradient text utility */
+  .text-gradient {
+    background: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Hero background grid pattern */
+  .bg-grid-pattern {
+    background-image:
+      linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+    background-size: 60px 60px;
+    animation: grid-fade 1s ease-out both;
+  }
+
+  /* Glow effect for CTA */
+  .glow-brand {
+    box-shadow:
+      0 0 20px rgba(56, 189, 248, 0.3),
+      0 0 60px rgba(56, 189, 248, 0.1);
+  }
+
+  .glow-brand:hover {
+    box-shadow:
+      0 0 30px rgba(56, 189, 248, 0.4),
+      0 0 80px rgba(56, 189, 248, 0.15);
   }
 }
