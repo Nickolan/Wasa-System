@@ -70,14 +70,25 @@ describe('cada pieza de dominio aparece únicamente en el change que la implemen
     expect(files).toEqual(['authStore.ts'])
   })
 
-  it.each(['src/shared/api', 'src/features'])(
-    '%s contains only .gitkeep',
-    (relativeDir) => {
-      const files = listFilesRecursively(path.join(projectRoot, relativeDir))
-      const nonGitkeep = files.filter((f) => path.basename(f) !== '.gitkeep')
-      expect(nonGitkeep).toEqual([])
-    },
-  )
+})
+
+describe('src/shared/api/ y src/features/ quedaron poblados por CHANGE-18 (D-13)', () => {
+  it('src/shared/api/ contiene exactamente los módulos declarados por el design (D-1..D-6)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/shared/api')).sort()
+    expect(files).toEqual(['axiosInstance.ts', 'problemDetails.ts'].sort())
+  })
+
+  it('src/features/ contiene exactamente la slice scan-form declarada por el design (D-6..D-11)', () => {
+    const files = listFilesRecursively(path.join(projectRoot, 'src/features')).sort()
+    expect(files).toEqual(
+      [
+        path.join('scan-form', 'index.ts'),
+        path.join('scan-form', 'api', 'submitScan.ts'),
+        path.join('scan-form', 'model', 'useScanForm.ts'),
+        path.join('scan-form', 'ui', 'ScanForm.tsx'),
+      ].sort(),
+    )
+  })
 })
 
 describe('src/entities quedó poblado por la slice user (CHANGE-14, D-9)', () => {

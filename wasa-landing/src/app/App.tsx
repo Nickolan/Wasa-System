@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import LandingPage from '@pages/LandingPage'
 import { useAuthStore } from '@app/stores/authStore'
+import { wireHttpClient } from '@app/providers/httpClientProvider'
 
 function App() {
   // D-6: restores a persisted session, if any is still valid, from the
@@ -9,6 +10,11 @@ function App() {
   const hydrate = useAuthStore((state) => state.hydrate)
 
   useEffect(() => {
+    // Same mount effect as hydrate() (design.md D-2, http-client): the
+    // single point where the shared HTTP client gets wired to the session
+    // store. configureApiClient only assigns module references, so running
+    // this twice under StrictMode is a no-op in behavior.
+    wireHttpClient()
     hydrate()
   }, [hydrate])
 

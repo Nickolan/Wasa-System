@@ -11,6 +11,7 @@ import {
 } from '@entities/scan'
 import type { ScanApiError, ScanRequest } from '@entities/scan'
 import type { AuthApiError } from '@entities/user'
+import type { ProblemDetails } from '@shared/api/problemDetails'
 import { expectZodError, issuePaths } from './support/zod'
 import { getImportedModules } from './support/fsd'
 
@@ -247,29 +248,36 @@ describe('ScanRequest: la aceptación ética no viaja al Bridge (D-7)', () => {
   })
 })
 
-describe('ScanApiError y AuthApiError: misma forma entre slices (D-8)', () => {
-  // Este test importa de `@entities/scan` y `@entities/user` a la vez —
-  // válido acá porque `tests/` está fuera del grafo de capas de FSD que
-  // verifica `tests/fsd-boundaries.test.ts`. El código de producción de
-  // ninguna de las dos slices puede hacer lo mismo. La unificación real de
-  // ambos tipos en un `ProblemDetails` de `shared/api/` queda planificada
-  // para CHANGE-18 (Open Question 2 de design.md); mientras tanto, este
-  // guard hace fallar la compilación si una de las dos formas cambia sin la
-  // otra.
-  type Assert<T extends true> = T
-  type Equals<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
-  type _ScanApiErrorMatchesAuthApiError = Assert<Equals<ScanApiError, AuthApiError>>
-
-  it('ambos tipos declaran los mismos cinco miembros de RFC 7807 (chequeo en runtime como evidencia del guard de tipos)', () => {
-    const sample: ScanApiError = {
+describe('ScanApiError y AuthApiError: alias del mismo contrato compartido (D-4, D-13 de CHANGE-18)', () => {
+  // Este test importa de `@entities/scan`, `@entities/user` y `@shared/api`
+  // a la vez — válido acá porque `tests/` está fuera del grafo de capas de
+  // FSD que verifica `tests/fsd-boundaries.test.ts`. El código de producción
+  // de ninguna de las dos slices puede hacer lo mismo.
+  //
+  // CHANGE-18 resolvió la Open Question 2 de CHANGE-17: `ScanApiError` y
+  // `AuthApiError` ya no son dos declaraciones que puedan divergir — son el
+  // mismo `ProblemDetails` de `shared/api/`. El guard de tipos entre slices
+  // que vivía acá queda retirado (D-13): con el alias no queda nada que
+  // pueda divergir. En su lugar, este test afirma que ambos alias resuelven
+  // al mismo contrato compartido, asignando en las dos direcciones.
+  it('un ProblemDetails es asignable a ScanApiError y a AuthApiError, y viceversa', () => {
+    const shared: ProblemDetails = {
       type: 'about:blank',
       title: 'Bad Request',
       status: 400,
       detail: null,
       instance: '/api/v1/scan/start',
     }
-    const asAuthApiError: AuthApiError = sample
+
+    const asScanApiError: ScanApiError = shared
+    const asAuthApiError: AuthApiError = shared
+    const backToShared: ProblemDetails = asScanApiError
+    const alsoBackToShared: ProblemDetails = asAuthApiError
+
+    expect(Object.keys(asScanApiError).sort()).toEqual(['detail', 'instance', 'status', 'title', 'type'])
     expect(Object.keys(asAuthApiError).sort()).toEqual(['detail', 'instance', 'status', 'title', 'type'])
+    expect(backToShared).toBe(shared)
+    expect(alsoBackToShared).toBe(shared)
   })
 })
 
