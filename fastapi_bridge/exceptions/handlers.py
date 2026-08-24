@@ -43,6 +43,7 @@ from typing import Callable, NamedTuple
 
 from fastapi_bridge.core.settings import get_settings
 from fastapi_bridge.exceptions.domain import DomainError, EmailAlreadyExistsError, InvalidCredentialsError
+from fastapi_bridge.exceptions.errors import N8nUnavailableError
 from fastapi_bridge.schemas.error_schemas import ErrorDetail
 
 # Literales RFC 7807 centralizados: único lugar del proyecto que los declara.
@@ -368,3 +369,31 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) 
     )
     response.headers["Retry-After"] = str(settings.RATE_LIMIT_WINDOW)
     return response
+
+
+# CHANGE-12, D-2: literales de módulo, igual que el resto -- ningún dato del
+# orquestador (URL, credencial de webhook, cuerpo de su respuesta) se
+# interpola acá. El detalle es un mensaje fijo, no una f-string.
+N8N_UNAVAILABLE_PROBLEM_TYPE = "https://wasa.dev/errors/n8n-unavailable"
+N8N_UNAVAILABLE_PROBLEM_TITLE = "Bad Gateway"
+N8N_UNAVAILABLE_PROBLEM_DETAIL = "No se pudo entregar el escaneo al orquestador. Intentá nuevamente más tarde."
+
+
+async def n8n_unavailable_handler(request: Request, exc: N8nUnavailableError) -> JSONResponse:
+    """Handler de `N8nUnavailableError` -> `502` RFC 7807 (CHANGE-12, D-2).
+
+    Construido con `problem_detail_response(...)`, el mismo punto único que
+    usa el resto de los handlers de este módulo. `N8nUnavailableError` no es
+    un `DomainError` (vive en `exceptions/errors.py`, no en
+    `exceptions/domain.py`): es un fallo de infraestructura de un componente
+    externo (el orquestador), no una regla de negocio violada, así que se
+    registra con su propio `exception_handler` en `create_app()` en vez de
+    agregar una fila a `_DOMAIN_ERROR_MAP`.
+    """
+    return problem_detail_response(
+        status_code=502,
+        instance=request.url.path,
+        detail=N8N_UNAVAILABLE_PROBLEM_DETAIL,
+        title=N8N_UNAVAILABLE_PROBLEM_TITLE,
+        type_=N8N_UNAVAILABLE_PROBLEM_TYPE,
+    )

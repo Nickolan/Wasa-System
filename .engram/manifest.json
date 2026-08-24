@@ -102,7 +102,8 @@
       "created_by": "Lauti Ferreria",
       "created_at": "2026-08-23T19:29:08Z",
       "sessions": 0,
-      "memories": 4
+      "memories": 4,
+      "prompts": 0
     },
     {
       "id": "a18c037a",
@@ -118,6 +119,14 @@
       "created_at": "2026-08-23T20:02:47Z",
       "sessions": 0,
       "memories": 2,
+      "prompts": 0
+    },
+    {
+      "id": "d850a18a",
+      "created_by": "Lauti Ferreria",
+      "created_at": "2026-08-24T00:51:06Z",
+      "sessions": 0,
+      "memories": 8,
       "prompts": 0
     }
   ]

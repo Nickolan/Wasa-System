@@ -556,28 +556,43 @@ async def test_openapi_schema_with_probe_route_declares_the_security_requirement
     assert declared_scheme["flows"]["password"]["tokenUrl"] == "/api/v1/auth/login"
 
 
-async def test_declaring_the_schema_alone_protects_nothing():
-    # 6.5 / 8.3, desde la app de producción sin ninguna ruta que use la
-    # dependencia todavía: ninguna operación existente queda protegida.
+async def test_only_the_scan_start_operation_declares_security():
+    # 6.5 / 8.3 (reemplaza a `test_declaring_the_schema_alone_protects_nothing`):
+    # cuando se escribió este test, ninguna ruta de producción usaba todavía
+    # `get_current_user`/`CurrentUserEmail`, así que declarar el esquema no
+    # protegía nada -- el aserto original ("ninguna operación existente debe
+    # declarar seguridad todavía") queda desmentido por CHANGE-12, que sí
+    # aplica el guard sobre `POST /api/v1/scan/start`. Se reescribe para
+    # afirmar lo que ahora corresponde: la protección sigue siendo por
+    # operación, no global -- exactamente una operación la declara, y es la
+    # que efectivamente usa la dependencia.
     app = create_app()
 
     schema = app.openapi()
 
-    for path_item in schema["paths"].values():
-        for operation in path_item.values():
-            assert not operation.get("security"), "ninguna operación existente debe declarar seguridad todavía"
+    protected_paths = {
+        path
+        for path, path_item in schema["paths"].items()
+        for operation in path_item.values()
+        if operation.get("security")
+    }
+    assert protected_paths == {"/api/v1/scan/start"}
 
 
 # ---------------------------------------------------------------------------
 # CHANGE-06 -- grupo 8: regresión de superficie de API (D-11)
 #
 # 8.1 (rutas registradas == health + register + login) y la mitad de 8.2
-# (scan/start sigue en 404 RFC 7807) ya están anclados sin cambios por
-# `test_app_wiring.py::test_route_surface_includes_health_and_auth_but_not_scan`
+# (scan/start sigue en 404 RFC 7807) estaban anclados, en su momento sin
+# tocarlos, por `test_app_wiring.py::test_route_surface_includes_health_and_auth_but_not_scan`
 # y `::test_still_unmounted_scan_route_returns_404_in_rfc7807_format`
-# (CHANGE-05/07): siguen pasando sin tocarlos, lo que ya es la regresión.
-# Acá sólo se agrega lo que ningún test previo cubre: que las rutas
-# públicas siguen respondiendo sin exigir Authorization.
+# (CHANGE-05/07). CHANGE-12 monta y protege `POST /api/v1/scan/start`, así
+# que esos dos anclajes ya no describen el estado vigente: se renombraron y
+# reescribieron ahí mismo (`test_route_surface_includes_health_auth_and_scan`,
+# `test_scan_route_without_credentials_returns_401_in_rfc7807_format`) para
+# afirmar lo que corresponde ahora. Acá sólo se agrega lo que ningún test
+# previo cubre: que las rutas públicas siguen respondiendo sin exigir
+# Authorization.
 # ---------------------------------------------------------------------------
 
 

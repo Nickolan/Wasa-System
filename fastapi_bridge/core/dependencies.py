@@ -108,6 +108,7 @@ from fastapi_bridge.core.security import decode_access_token
 from fastapi_bridge.core.settings import Settings, get_settings
 from fastapi_bridge.db.session import get_session_factory
 from fastapi_bridge.services.auth_service import AuthService
+from fastapi_bridge.services.scan_service import ScanService
 from fastapi_bridge.uow.auth_unit_of_work import AuthUoW
 
 
@@ -162,3 +163,14 @@ async def get_current_user(
 # una operación protegida -- nunca `Depends(oauth2_scheme)` por error, que
 # devuelve el token sin validar.
 CurrentUserEmail = Annotated[str, Depends(get_current_user)]
+
+
+# CHANGE-12, D-3: proveedor trivial de `ScanService` -- vive acá (no en
+# `api/v1/scan/router.py`) por la misma razón que `get_auth_service`: la
+# composición de servicios queda fuera de `api/`, para que la capa de
+# transporte no conozca cómo se construye lo que usa. El call site de
+# producción sigue siendo `ScanService()` sin argumentos (CHANGE-11 D-2
+# intacto); los tests sustituyen el Service entero con
+# `app.dependency_overrides[get_scan_service]`.
+def get_scan_service() -> ScanService:
+    return ScanService()

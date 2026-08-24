@@ -130,25 +130,6 @@ El proyecto SHALL declarar sus dependencias de runtime y de desarrollo en manifi
 - **WHEN** se lee `fastapi_bridge/requirements.txt`
 - **THEN** no declara `passlib`, cuya última publicación es anterior al proyecto y cuya integración con las versiones actuales de bcrypt está rota
 
-### Requirement: Superficie de API expuesta por el servicio
-La aplicación SHALL exponer, además del endpoint de salud, las dos operaciones de autenticación (`POST /api/v1/auth/register` y `POST /api/v1/auth/login`), montando el router de auth desde `create_app()`. Los routers de dominio cuyos changes todavía no se implementaron —el de scan— SHALL seguir existiendo como módulos sin montar, y sus rutas SHALL seguir respondiendo `404`. Montar un router SHALL ser una decisión explícita del change que implementa sus operaciones, nunca un efecto colateral de otro change.
-
-#### Scenario: Rutas de aplicación registradas
-- **WHEN** se inspecciona `app.routes` descartando las rutas internas de FastAPI (`/docs`, `/openapi.json`, `/redoc`)
-- **THEN** las rutas de aplicación registradas son exactamente `GET /health`, `POST /api/v1/auth/register` y `POST /api/v1/auth/login`
-
-#### Scenario: Los endpoints de auth están disponibles
-- **WHEN** se hace `POST /api/v1/auth/register` o `POST /api/v1/auth/login` con un cuerpo válido
-- **THEN** la respuesta no es `404`: ambas rutas están montadas y atendidas por el router de auth
-
-#### Scenario: El endpoint de scan aún no está disponible
-- **WHEN** se hace `POST /api/v1/scan/start`
-- **THEN** la respuesta es `404`, porque ese router todavía no está montado
-
-#### Scenario: El endpoint de salud conserva su contrato
-- **WHEN** se hace `GET /health` con el router de auth montado
-- **THEN** la respuesta sigue siendo `200` con body exactamente `{"status": "ok", "service": "wasa-fastapi-bridge"}`
-
 ### Requirement: El scaffold no toca la base de datos compartida
 El FastAPI Bridge SHALL convivir con el sistema WASA existente sobre la instancia PostgreSQL `db_fuzzing` sin alterar lo que no le pertenece. El servicio SHALL abrir conexión y emitir DDL **exclusivamente** para su propia tabla `users`; las tablas preexistentes `scans` y `vulnerabilities` NO SHALL ser declaradas, mapeadas, leídas, escritas ni migradas desde este servicio.
 
@@ -167,3 +148,27 @@ El FastAPI Bridge SHALL convivir con el sistema WASA existente sobre la instanci
 #### Scenario: Sin herramientas de migración sobre la base compartida
 - **WHEN** se inspecciona el árbol del proyecto
 - **THEN** no hay configuración de Alembic ni ningún otro mecanismo que pueda emitir `ALTER`, `DROP` o `TRUNCATE` sobre `db_fuzzing`
+
+### Requirement: Superficie de API expuesta por el servicio con scan montado
+
+La aplicación SHALL exponer, además del endpoint de salud, las dos operaciones de autenticación (`POST /api/v1/auth/register` y `POST /api/v1/auth/login`) y la operación de disparo de escaneo (`POST /api/v1/scan/start`), cada una montada desde `create_app()` por el change que implementó sus operaciones (auth por CHANGE-05, scan por este change). Montar un router SHALL seguir siendo una decisión explícita del change correspondiente, nunca un efecto colateral de otro change.
+
+#### Scenario: Rutas de aplicación registradas
+
+- **WHEN** se inspecciona `app.routes` descartando las rutas internas de FastAPI (`/docs`, `/openapi.json`, `/redoc`)
+- **THEN** las rutas de aplicación registradas son exactamente `GET /health`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login` y `POST /api/v1/scan/start`
+
+#### Scenario: Los endpoints de auth están disponibles
+
+- **WHEN** se hace `POST /api/v1/auth/register` o `POST /api/v1/auth/login` con un cuerpo válido
+- **THEN** la respuesta no es `404`: ambas rutas están montadas y atendidas por el router de auth
+
+#### Scenario: El endpoint de scan está disponible y protegido
+
+- **WHEN** se hace `POST /api/v1/scan/start`
+- **THEN** la respuesta no es `404`: el router de scan, montado por este change, atiende la solicitud y aplica su propio guard de autenticación sobre ella
+
+#### Scenario: El endpoint de salud conserva su contrato
+
+- **WHEN** se hace `GET /health` con los routers de auth y de scan montados
+- **THEN** la respuesta sigue siendo `200` con body exactamente `{"status": "ok", "service": "wasa-fastapi-bridge"}`
