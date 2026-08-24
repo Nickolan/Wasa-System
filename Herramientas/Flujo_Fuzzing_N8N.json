@@ -1,0 +1,978 @@
+{
+  "name": "Flujo Fuzzing con Postgres y Redis Automatizado V6",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1440,
+        336
+      ],
+      "id": "057319c3-b268-43b5-b393-b0b04c1c67cc",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execSync } = require('child_process');\nconst fs = require('fs');\n\n// CONFIGURACIÓN DE RUTAS (Asegúrate de que coincidan con tu PC)\nconst FFUF_PATH = 'C:\\\\Herramientas\\\\ffuf_2.1.0_windows_amd64\\\\ffuf.exe';\nconst WORDLIST = 'C:\\\\Herramientas\\\\common.txt';\nconst TARGET = $('Loop Over Items').first().json.target\nconst OUTPUT_FILE = 'C:\\\\Herramientas\\\\ffuf_results.json';\nconst PHPSESSID = $('URL Ejemplo').first().json.phpsessionID;\n\ntry {\n  // Ejecutar ffuf\n  // -s: Modo silencioso para no ensuciar la consola\n\n  const ffufCommand = `ffuf -u ${TARGET}/FUZZ -w ${WORDLIST} -mc 200,204,301,302,307,401,403 -s -of json -o ${OUTPUT_FILE} -t 100 -timeout 15 -H \"Cookie: PHPSESSID=${PHPSESSID}; security=low\"`;\n  \n  console.log(\"Ejecutando ffuf...\");\n  execSync(ffufCommand);\n\n  // Leer y parsear los resultados\n  const rawData = fs.readFileSync(OUTPUT_FILE, 'utf8');\n  const results = JSON.parse(rawData);\n\n  return [{\n    json: {\n      message: \"Fuzzing de directorios completado\",\n      ffufResults: results.results || [],\n    discoveredPaths: results.results ? results.results.length : 0,\n      totalFound: results.results.length,\n      url: ffufCommand\n    }\n  }];\n\n} catch (error) {\n  return [{ json: { error: \"Error en ffuf: \" + error.message } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        576
+      ],
+      "id": "bea673fc-353f-4557-88c3-81df8a6469c2",
+      "name": "ffuf"
+    },
+    {
+      "parameters": {
+        "jsCode": "const axios = require('axios');\n\nconst ZAP_API_KEY = $('Loop Over Items').first().json.zap_api_key;\nconst ZAP_URL = $('Loop Over Items').first().json.zap_url;\nconst TARGET_URL = $('Loop Over Items').first().json.target;\n\ntry {\n  console.log(\"Iniciando Escaneo Activo (Active Scan)...\");\n\n  // 1. Iniciar el Escaneo Activo\n  // Nota: ZAP usará automáticamente la sesión (Cookie) porque inyectamos \n  // la regla Replacer globalmente en el nodo del Spider.\n  const activeScanResponse = await axios.get(`${ZAP_URL}/JSON/ascan/action/scan/`, {\n    params: {\n      apikey: ZAP_API_KEY,\n      url: TARGET_URL,\n      recurse: true,\n      inScopeOnly: false\n    }\n  });\n  \n  const activeScanId = activeScanResponse.data.scan;\n  console.log(`Active Scan ID: ${activeScanId}. Esperando a que finalice...`);\n\n  // 2. Bucle de espera (con límite de seguridad para evitar cuelgues infinitos)\n  let progress = 0;\n  let intentos = 0;\n  const startTime = Date.now();\n  const MAX_TIMEOUT_MS = 4.7 * 60 * 1000;\n  const MAX_INTENTOS = 360; // 360 intentos * 5 seg = 30 minutos de máximo. \n  \n  while (progress < 100 && (Date.now() - startTime) < MAX_TIMEOUT_MS) {\n    // Espera de 5 segundos\n    await new Promise(resolve => setTimeout(resolve, 5000));\n    \n    try {\n        const statusResponse = await axios.get(`${ZAP_URL}/JSON/ascan/view/status/`, {\n            params: { apikey: ZAP_API_KEY, scanId: activeScanId }\n        });\n        \n        progress = parseInt(statusResponse.data.status);\n    } catch (error) {\n        console.error(\"Error temporal al consultar ZAP:\", error.message);\n        // Si hay un error de red, no rompemos el nodo, dejamos que intente de nuevo en 5s.\n    }\n    \n    intentos++;\n    \n    // Logueamos solo cada 30 segundos (aprox 6 intentos) para no saturar la consola de n8n\n    if (intentos % 6 === 0 || progress === 100) { \n        const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);\n        console.log(`Progreso Escaneo Activo: ${progress}% (Tiempo transcurrido: ${elapsedSeconds}s)`);\n    }\n  }\n\n  console.log(\"Obteniendo alertas de ZAP...\");\n\n  // 3. Obtener alertas (Solo consulta la BD de ZAP, no requiere Headers de sesión)\n  const response = await axios.get(`${ZAP_URL}/JSON/core/view/alerts/`, {\n    params: {\n      apikey: ZAP_API_KEY,\n      baseurl: TARGET_URL\n    }\n  });\n\n  // Filtramos como tenías antes (pluginId >= 100000 suele separar activas de pasivas)\n  const rawAlerts = response.data.alerts || [];\n\n  // ==========================================\n  // MAGIA ANTI-MEMORIA: DEDUPLICACIÓN DE ALERTAS\n  // ==========================================\n  // Nos aseguramos de no procesar 1000 veces la misma alerta exacta en la misma URL\n  const uniqueAlertsMap = new Map();\n  \n  rawAlerts.forEach(a => {\n    const uniqueKey = `${a.alert}_${a.url}`; // Llave única: Nombre de vulnerabilidad + URL\n    \n    if (!uniqueAlertsMap.has(uniqueKey)) {\n      uniqueAlertsMap.set(uniqueKey, {\n        risk: a.risk,\n        name: a.alert,\n        url: a.url,\n        evidence: a.evidence || 'N/A',\n        description: a.description,\n        alert: a.alert,\n        solution: a.solution,\n        cweid: a.cweid\n      });\n    }\n  });\n\n  // Convertimos el Map limpio de vuelta a un Array\n  const allAlerts = Array.from(uniqueAlertsMap.values());\n\n  // 4. Retornamos los datos respetando tu estructura exacta\n  return [{\n    json: {\n      message: progress >= 100 ? \"Alertas obtenidas con éxito\" : \"Escaneo detenido por límite de tiempo (Timeout)\",\n      totalAlerts: allAlerts.length,\n      highRisk: allAlerts.filter(a => a.risk === 'High').length,\n      mediumRisk: allAlerts.filter(a => a.risk === 'Medium').length,\n      full: rawAlerts,  // Mantiene la lista cruda completa (por si la necesitas de respaldo)\n      allAlerts: allAlerts // Manda la lista limpia y procesada para los nodos siguientes\n    }\n  }];\n\n} catch (error) {\n  return [{ json: { error: \"Error en Active Scan: \" + error.message } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        384
+      ],
+      "id": "ad94517e-5097-4b2a-9edb-9bbbc5aff012",
+      "name": "Alertas ZAP"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Obtenemos el ID generado directamente del nodo 'Crear ID'\nconst scanId = $('Crear ID').first().json.id;\n\n// 2. Recuperamos la lista de vulnerabilidades del nodo \"Consolidar Resultado\"\n// Usamos $('Nombre del Nodo') para acceder a datos de nodos que no son el anterior directo\nconst vulnerabilidades = $('Consolidar Resultados Nuclei').first().json.vulnerabilities \n\n// 3. Mapeamos cada vulnerabilidad insertando el scan_id real\nconst itemsListos = vulnerabilidades.map(vuln => {\n  return {\n    json: {\n      scan_id: scanId, // El ID real de la base de datos\n      source: vuln.source,\n      type: vuln.type,\n      severity: vuln.severity,\n      url: vuln.url,\n      description: vuln.description,\n      solution: vuln.solution,\n      cweid: vuln.cweid || 0,\n      evidence: vuln.evidence || 'N/A'\n    }\n  };\n});\n\nreturn itemsListos;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2112,
+        96
+      ],
+      "id": "3baf2bf4-f25b-487e-bdb4-f29a1dbfd125",
+      "name": "Preparar las vulnerabilidades"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generar reporte detallado\nconst data = $input.first().json;\nconst vulns = data.vulnerabilities;\nconst stats = $input.first().json.statistics;\n\nconst TARGET_URL = $('Loop Over Items').first().json.target\nconst scanId = $('Crear ID').first().json.id;\n\n// ⏱️ Cálculo del tiempo de ejecución total del flujo\nconst flowStartTime = $('URL Ejemplo').first().json.flowStartTime;\nconst flowEndTime = Date.now();\nconst durationMs = flowEndTime - flowStartTime;\n\nconst durationMinutes = Math.floor(durationMs / 60000);\nconst durationSeconds = Math.floor((durationMs % 60000) / 1000);\nconst durationFormatted = durationMinutes > 0\n  ? `${durationMinutes} min ${durationSeconds} seg`\n  : `${durationSeconds} seg`;\n\nconst report = `\n# 🔍 Reporte de Fuzzing de Aplicación Web\n\n**Fecha del Escaneo**: ${new Date(data.scanDate).toLocaleString('es-MX')}\n**Aplicación Objetivo**: ${TARGET_URL}\n**Total de Vulnerabilidades**: ${stats.total}\n**Scan ID**: ${scanId}\n**⏱️ Tiempo de Ejecución**: ${durationFormatted} (${(durationMs / 1000).toFixed(1)}s)\n\n---\n\n## 📊 Resumen Ejecutivo\n\n| Severidad | Cantidad | Porcentaje |\n|-----------|----------|------------|\n| 🔴 Crítica | ${stats.critical} | ${((stats.critical/stats.total)*100).toFixed(1)}% |\n| 🟠 Alta | ${stats.high} | ${((stats.high/stats.total)*100).toFixed(1)}% |\n| 🟡 Media | ${stats.medium} | ${((stats.medium/stats.total)*100).toFixed(1)}% |\n| 🟢 Baja | ${stats.low} | ${((stats.low/stats.total)*100).toFixed(1)}% |\n\n---\n\n## ⏱️ Métricas de Ejecución\n\n| Métrica | Valor |\n|---------|-------|\n| Inicio del escaneo | ${new Date(flowStartTime).toLocaleString('es-MX')} |\n| Fin del escaneo | ${new Date(flowEndTime).toLocaleString('es-MX')} |\n| Tiempo total de ejecución | ${durationFormatted} |\n| Promedio por vulnerabilidad | ${stats.total > 0 ? (durationMs / stats.total / 1000).toFixed(2) + 's' : 'N/A'} |\n\n---\n\n## 🚨 Vulnerabilidades Críticas\n\n${vulns.filter(v => v.severity === 'critical').map((v, i) => `\n### ${i+1}. ${v.type}\n\n**URL**: ${v.url}\n**Fuente**: ${v.source}\n**CWE ID (OWASP Mapping)**: ${v.cweid ? 'CWE-' + v.cweid : 'N/A'}\n\n**Descripción**:\n${v.description}\n\n**Solución Recomendada**:\n${v.solution}\n\n**Evidencia**:\n\\`\\`\\`\n${v.evidence ? v.evidence.substring(0, 200) : 'N/A'}\n\\`\\`\\`\n\n---\n`).join('\\n') || '*No se encontraron vulnerabilidades críticas.*'}\n\n## ⚠️ Vulnerabilidades Altas\n\n${vulns.filter(v => v.severity === 'high').slice(0, 10).map((v, i) => `\n### ${i+1}. ${v.type}\n\n**URL**: ${v.url}\n**Descripción**: ${v.description.substring(0, 150)}...\n**Solución**: ${v.solution.substring(0, 150)}...\n\n---\n`).join('\\n') || '*No se encontraron vulnerabilidades altas.*'}\n\n${vulns.filter(v => v.severity === 'high').length > 5 ? `*...y ${vulns.filter(v => v.severity === 'high').length - 5} vulnerabilidades altas adicionales.*` : ''}\n\n## 📋 Recomendaciones por Categoría\n\n${Object.entries(\n  vulns.reduce((acc, v) => {\n    acc[v.type] = (acc[v.type] || 0) + 1;\n    return acc;\n  }, {})\n).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([type, count]) =>\n  `- **${type}**: ${count} ocurrencias`\n).join('\\n')}\n\n## 🛡️ Plan de Remediación\n\n1. **Prioridad Inmediata** (Críticas y Altas):\n   - Inyecciones SQL: Implementar prepared statements\n   - XSS: Implementar output encoding\n   - CSRF: Agregar tokens anti-CSRF\n\n2. **Corto Plazo** (Medias):\n   - Configuraciones inseguras\n   - Falta de headers de seguridad\n   - Información sensible expuesta\n\n3. **Largo Plazo** (Bajas):\n   - Mejoras en la documentación de API\n   - Optimización de mensajes de error\n\n---\n\n*Reporte generado automáticamente por sistema de fuzzing*\n*Herramientas utilizadas: OWASP ZAP, SQLMap, ffuf*\n*Tiempo total de ejecución del flujo: ${durationFormatted}*\n`;\n\nconst fs = require('fs');\n\nconst reportPath = `C:\\\\Herramientas\\\\Reportes\\\\Reporte_Final_${Date.now()}.md`;\n\nfs.writeFileSync(reportPath, report);\n\nreturn [{\n  json: {\n    report: report,\n    reportPath: reportPath,\n    statistics: stats,\n    scanDate: $input.first().json.scanDate,\n    vulns,\n    executionTime: {\n      startTime: flowStartTime,\n      endTime: flowEndTime,\n      durationMs: durationMs,\n      durationFormatted: durationFormatted\n    }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        384
+      ],
+      "id": "27dbaf69-2507-4a70-b018-b0df1a6e8b97",
+      "name": "Reporte Final"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "vulnerabilities",
+          "mode": "list",
+          "cachedResultName": "vulnerabilities"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "cweid": "={{ $json.cweid }}",
+            "source": "={{ $json.source }}",
+            "type": "={{ $json.type }}",
+            "severity": "={{ $json.severity }}",
+            "description": "={{ $json.description }}",
+            "url": "={{ $json.url }}",
+            "solution": "={{ $json.solution }}",
+            "evidence": "={{ $json.evidence }}",
+            "scan_id": "={{ $json.scan_id }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "scan_id",
+              "displayName": "scan_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "severity",
+              "displayName": "severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "url",
+              "displayName": "url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "solution",
+              "displayName": "solution",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "cweid",
+              "displayName": "cweid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "evidence",
+              "displayName": "evidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2384,
+        32
+      ],
+      "id": "37dc09d0-6fe5-4de6-b878-8561dc465562",
+      "name": "Insertar Vulnerabilidades",
+      "credentials": {
+        "postgres": {
+          "id": "<REDACTADO>",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "scans",
+          "mode": "list",
+          "cachedResultName": "scans"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "total_vulnerabilities": "={{ $('Reporte Final').item.json.statistics.total }}",
+            "critical_count": "={{ $('Reporte Final').item.json.statistics.critical }}",
+            "high_count": "={{ $('Reporte Final').item.json.statistics.high }}",
+            "medium_count": "={{ $('Reporte Final').item.json.statistics.medium }}",
+            "low_count": "={{ $('Reporte Final').item.json.statistics.low }}",
+            "target_url": "={{ $('Consolidar Resultados Nuclei').item.json.target }}",
+            "report_path": "={{ $('Reporte Final').item.json.reportPath }}",
+            "scan_date": "={{ $('Consolidar Resultados Nuclei').item.json.scanDate }}",
+            "id": "={{ $json.id }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "target_url",
+              "displayName": "target_url",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scan_date",
+              "displayName": "scan_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "total_vulnerabilities",
+              "displayName": "total_vulnerabilities",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "critical_count",
+              "displayName": "critical_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "high_count",
+              "displayName": "high_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "medium_count",
+              "displayName": "medium_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "low_count",
+              "displayName": "low_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "report_path",
+              "displayName": "report_path",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1888,
+        144
+      ],
+      "id": "5c6f46fa-a8b3-4e3c-b5ca-0c7245be0086",
+      "name": "Insertar Escaneos",
+      "credentials": {
+        "postgres": {
+          "id": "<REDACTADO>",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "numberInputs": 3,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        880,
+        368
+      ],
+      "id": "7718652d-83be-4c5f-914b-709adf03508c",
+      "name": "Combinaicon de Datos",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "<CORREO_DESTINO>",
+        "toEmail": "<CORREO_DESTINO>",
+        "subject": "=Reporte de Fuzzing",
+        "html": "={{ $json.correoFinal }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2144,
+        592
+      ],
+      "id": "48bab56b-f5ef-4661-a934-d2816049ec78",
+      "name": "Send email",
+      "webhookId": "2beda226-6b6b-43e5-884e-edf7853e0084",
+      "credentials": {
+        "smtp": {
+          "id": "<REDACTADO>",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "markdownToHtml",
+        "markdown": "={{ $json.report }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [
+        1664,
+        432
+      ],
+      "id": "3f79c90f-1de3-420a-a5a7-286db5e16ff0",
+      "name": "reporteHTML"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { exec } = require('child_process');\nconst util = require('util');\nconst fs = require('fs');\nconst process = require('process');\n\nconst execPromise = util.promisify(exec);\n\n// Definición de rutas (Asegúrate de que el usuario 'Nicolas' es el correcto en este entorno)\nconst NUCLEI_PATH = 'nuclei'; \nconst TEMPLATES_PATH = 'C:\\\\Herramientas\\\\nuclei-templates';\nconst OUTPUT_FILE = 'C:\\\\Herramientas\\\\nuclei_results_final.json';\n\nconst PHPSESSID = $('URL Ejemplo').first().json.phpsessionID;\nlet target = $('Loop Over Items').first().json.target;\nif (target.includes('localhost')) {\n   target = target.replace('localhost', '127.0.0.1');\n}\n// Entorno unificado\nconst execOptions = {\n    timeout: 270000,\n    maxBuffer: 1024 * 1024 * 50, // 50MB\n    env: {\n      ...process.env,\n      USERPROFILE: 'C:\\\\Users\\\\Nicolas',\n      HOME: 'C:\\\\Users\\\\Nicolas',\n      APPDATA: 'C:\\\\Users\\\\Nicolas\\\\AppData\\\\Roaming',\n      LOCALAPPDATA: 'C:\\\\Users\\\\Nicolas\\\\AppData\\\\Local'\n    }\n};\n\ntry {\n  console.log(\"Iniciando escaneo con Nuclei...\");\n\n  // Limpiamos resultados viejos\n  if (fs.existsSync(OUTPUT_FILE)) { \n      fs.unlinkSync(OUTPUT_FILE); \n  }\n\n  // Usamos NUCLEI_PATH, agregamos filtro de severidad y usamos -je\n  const simpleCommand = `\"${NUCLEI_PATH}\" -u \"${target}\" -t \"${TEMPLATES_PATH}\" -ni -silent -c 100 -rl 500 -H \"Cookie: PHPSESSID=${PHPSESSID}; security=low\" -je \"${OUTPUT_FILE}\"`;\n  \n  console.log(\"Ejecutando comando principal: \", simpleCommand);\n  \n  // EJECUCIÓN ASÍNCRONA\n  try {\n    await execPromise(simpleCommand, execOptions); \n  } catch (execError) {\n    console.log(\"Aviso de ejecución de Nuclei (Código distinto a 0):\", execError.message);\n  }\n\n  // Leer y procesar JSON\n  let results = [];\n  const existeArchivo = fs.existsSync(OUTPUT_FILE);\n  \n  if (existeArchivo) {\n    const rawData = fs.readFileSync(OUTPUT_FILE, 'utf8').trim();\n    if (rawData) {\n      try {\n        const parsed = JSON.parse(rawData);\n        results = Array.isArray(parsed) ? parsed : [parsed];\n      } catch (e) {\n        // Fallback para formato JSONL\n        results = rawData.split('\\n')\n                         .filter(line => line.trim() !== '')\n                         .map(line => JSON.parse(line));\n      }\n    }\n  }\n\n  // Prueba de versión usando también la ruta absoluta\n  let responseVersion = \"\";\n  try {\n    const { stdout, stderr } = await execPromise(`\"${NUCLEI_PATH}\" -version`, execOptions);\n    responseVersion = (stdout || stderr).trim(); \n  } catch (error) {\n    responseVersion = error.message;\n  }\n\n  return [{\n    json: {\n      message: results.length > 0 ? \"¡Vulnerabilidades detectadas!\" : \"Escaneo completado (Sin hallazgos)\",\n      count: results.length,\n      nucleiAlerts: results,\n      debug: {\n        existeArchivo,\n        targetUsado: target,\n        versionCheck: responseVersion\n      }\n    }\n  }];\n\n} catch (error) {\n  return [{ json: { error: \"Fallo crítico en el nodo Nuclei: \" + error.message } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        176
+      ],
+      "id": "5ae9b5e3-1974-44a4-bc0c-f8883da9ce5d",
+      "name": "Nuclei Scann",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Consolidar todos los hallazgos de las herramientas\nconst nucleiAlerts = $input.first().json.nucleiAlerts || []; // <-- Cambiado\nconst activeAlerts = $input.first().json.allAlerts || [];\nconst sqlmapResults = $input.first().json.sqlmap_results || [];\nconst ffufResults = $input.first().json.ffufResults || [];\n\nconst vulnerabilityMap = new Map();\n\n// [FIX 2026-07-27] Corregido el mapeo de severidad: el riskMap original\n// desplazaba cada nivel de ZAP un escalón hacia arriba (High->critical),\n// lo que inflaba artificialmente el conteo de vulnerabilidades \"Crítica\"\n// en el KPI del Dashboard. ZAP no emite nativamente el nivel \"Critical\",\n// por lo que High debe mapear a 'high', no a 'critical'.\nfunction classifySeverity(risk) {\n  if (!risk) return 'low';\n  const riskMap = {\n    'High': 'high',\n    'Medium': 'medium',\n    'Low': 'low',\n    'Informational': 'low',\n    'critical': 'critical',\n    'high': 'high',\n    'medium': 'medium',\n    'low': 'low',\n    'info': 'low'\n  };\n  return riskMap[risk] || risk || 'low';\n}\n\nfunction addOrUpdateVulnerability(vuln) {\n  const key = `${vuln.type}`;\n  if (!vulnerabilityMap.has(key)) {\n    vulnerabilityMap.set(key, vuln);\n  } else {\n    const existing = vulnerabilityMap.get(key);\n    if (vuln.source === 'SQLMap' || (vuln.evidence && !existing.evidence)) {\n      vulnerabilityMap.set(key, { ...existing, ...vuln });\n    }\n  }\n}\n\n// 1. Procesar alertas Activas de ZAP\nactiveAlerts.forEach(alert => {\n  addOrUpdateVulnerability({\n    source: 'OWASP ZAP',\n    type: alert.alert,\n    severity: classifySeverity(alert.risk),\n    url: alert.url,\n    description: alert.description || alert.desc,\n    solution: alert.solution,\n    cweid: alert.cweid,\n    evidence: alert.evidence\n  });\n});\n\n// 2. Procesar alertas de Nuclei\nnucleiAlerts.forEach(alert => {\n  addOrUpdateVulnerability({\n    source: 'Nuclei',\n    type: alert.info?.name || 'Vulnerabilidad Detectada',\n    severity: classifySeverity(alert.info?.severity),\n    url: alert['matched-at'] || alert.host || '',\n    description: alert.info?.description || 'Detectado por escáner de plantillas Nuclei.',\n    solution: alert.info?.remediation || 'Revisar la configuración y aplicar parches recomendados.',\n    // Nuclei agrupa los CWEs en un array, sacamos el número\n    cweid: alert.info?.classification?.['cwe-id']?.[0]?.replace('cwe-', '') || null,\n    evidence: alert['extracted-results'] ? alert['extracted-results'].join(', ') : (alert.matcher_name || '')\n  });\n});\n\n// 3. Procesar SQLMap\n// [FIX 2026-07-27] Severidad hardcodeada corregida de 'critical' a 'high':\n// una inyección SQL confirmada corresponde a CWE-89 / Alto según la\n// clasificación usada en el resto de la tesis (Tabla 8), no a Crítico.\nsqlmapResults.filter(r => r.vulnerable).forEach(result => {\n  addOrUpdateVulnerability({\n    source: 'SQLMap',\n    type: 'SQL Injection',\n    severity: 'high',\n    url: result.url,\n    description: 'Vulnerabilidad de Inyección SQL detectada mediante pruebas de carga automatizadas.',\n    solution: 'Implementar consultas parametrizadas y validación estricta de entradas.',\n    cweid: 89,\n    evidence: result.details\n  });\n});\n\n// 4. Procesar ffuf\nffufResults.forEach(result => {\n  if (result.status === 403 || result.status === 401) {\n    addOrUpdateVulnerability({\n      source: 'ffuf',\n      type: 'Unauthorized Access Attempt',\n      severity: 'low',\n      url: result.url,\n      description: `Se detectó un recurso protegido con código de estado: ${result.status}`,\n      solution: 'Verificar que los controles de acceso y permisos de archivos sean los adecuados.',\n      cweid: 284,\n      evidence: `HTTP Status: ${result.status}`\n    });\n  }\n});\n\nconst allVulnerabilities = Array.from(vulnerabilityMap.values());\n\nconst stats = {\n  total: allVulnerabilities.length,\n  critical: allVulnerabilities.filter(v => v.severity === 'critical').length,\n  high: allVulnerabilities.filter(v => v.severity === 'high').length,\n  medium: allVulnerabilities.filter(v => v.severity === 'medium').length,\n  low: allVulnerabilities.filter(v => v.severity === 'low').length\n};\n\nreturn [{\n  json: {\n    vulnerabilities: allVulnerabilities,\n    statistics: stats,\n    scanDate: new Date().toISOString(),\n    target: $('Loop Over Items').first().json.target\n    }\n  }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        384
+      ],
+      "id": "ce421726-9797-4a3a-af94-d0b2c7c03682",
+      "name": "Consolidar Resultados Nuclei"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 40
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1424,
+        576
+      ],
+      "id": "8145d63a-1658-427e-a1c9-35931fc7f482",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lista de aplicaciones a escanear\nconst objetivos = [\n  { target: \"http://localhost:8081/\", nombre: \"DVWA\" }\n];\n\n// Capturamos el momento exacto de inicio del flujo\nconst flowStartTime = Date.now();\n\n// Mapeamos para que n8n entienda que son \"items\" separados\nreturn objetivos.map(app => {\n  return {\n    json: {\n      target: app.target,\n      nombre: app.nombre,\n      zap_api_key: \"<ZAP_API_KEY>\",\n      zap_url: \"http://localhost:8090\",\n      phpsessionID: \"<PHPSESSID>\",\n      flowStartTime: flowStartTime  // ⏱️ Inicio del flujo completo\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1232,
+        288
+      ],
+      "id": "8f96ac7b-d83f-4558-ae69-8794c1c415f7",
+      "name": "URL Ejemplo"
+    },
+    {
+      "parameters": {
+        "batchSize": "=1",
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -992,
+        272
+      ],
+      "id": "332ddea6-d148-481b-814b-d791cb3e629a",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "jsCode": "const htmlCrudo = $input.first().json.data;\n\nconst estilosCSS = `\n<div style=\"font-family: Arial, Helvetica, sans-serif; color: #333; max-width: 800px; margin: 0 auto; line-height: 1.6;\">\n  <style>\n    table { width: 100%; border-collapse: collapse; margin: 20px 0; }\n    th, td { border: 1px solid #dddddd; padding: 12px; text-align: left; }\n    th { background-color: #f4f4f4; color: #333; }\n    h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }\n    h2, h3 { color: #34495e; }\n    code { background-color: #f8f9fa; padding: 2px 4px; border-radius: 4px; font-family: monospace; }\n    pre { background-color: #f8f9fa; padding: 15px; border-radius: 5px; overflow-x: auto; border: 1px solid #eee; }\n  </style>\n  ${htmlCrudo}\n</div>\n`;\n\nreturn [{\n  json: {\n    correoFinal: estilosCSS\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1904,
+        528
+      ],
+      "id": "ca0a6347-4152-44b0-a85f-d3ad780f9228",
+      "name": "AddHTML"
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "sqlmap_tasks",
+        "messageData": "={{ JSON.stringify({ \n\"urls\": $json.urlsFound, \n\"scan_id\": $('Crear ID').item.json.id,\n\"cookie\": \"PHPSESSID=\" + $('URL Ejemplo').item.json.phpsessionID + \"; security=low\",\n\"level\": 2,\n\"risk\": 1\n}) }}",
+        "tail": true
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        544,
+        64
+      ],
+      "id": "9065f196-bfb6-4e97-8192-a7a934ff03c3",
+      "name": "Redis",
+      "credentials": {
+        "redis": {
+          "id": "<REDACTADO>",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "scans",
+          "mode": "list",
+          "cachedResultName": "scans"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "target_url": "={{ $json.target }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "target_url",
+              "displayName": "target_url",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scan_date",
+              "displayName": "scan_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "total_vulnerabilities",
+              "displayName": "total_vulnerabilities",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "critical_count",
+              "displayName": "critical_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "high_count",
+              "displayName": "high_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "medium_count",
+              "displayName": "medium_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "low_count",
+              "displayName": "low_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "report_path",
+              "displayName": "report_path",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -704,
+        240
+      ],
+      "id": "0e96e5c9-f316-4e30-b5fd-3aaa5b10dfe5",
+      "name": "Crear ID",
+      "credentials": {
+        "postgres": {
+          "id": "<REDACTADO>",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fe715861-2bc7-49fb-bb5f-584b0eed4800",
+              "name": "id",
+              "value": "={{ $('Crear ID').first().json.id }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1632,
+        240
+      ],
+      "id": "e3be30ea-71ad-4fd8-99c6-2ac5abb2ba91",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c466f568-d698-4eb2-9ce1-fa152838708c",
+              "leftValue": "={{ $json.urlsFound }}",
+              "rightValue": "?",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        256,
+        32
+      ],
+      "id": "2cd9b947-1154-4d16-b63c-fbfa68188986",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "urlsFound",
+        "include": "allOtherFields",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "ed33d827-e060-4005-9099-dfe2d775c5aa",
+      "name": "Item Lists"
+    },
+    {
+      "parameters": {
+        "jsCode": "const axios = require('axios');\n\nconst ZAP_API_KEY = $('URL Ejemplo').first().json.zap_api_key;\nconst ZAP_URL = $('URL Ejemplo').first().json.zap_url;\nconst TARGET_URL = $('Loop Over Items').first().json.target;\nconst PHPSESSID = $('URL Ejemplo').first().json.phpsessionID;\n\nconst COOKIE_AUTH = `PHPSESSID=${PHPSESSID}; security=low`;\n\ntry {\n  console.log(\"Preparando entorno limpio en ZAP...\");\n\n  // ==========================================\n  // FIX 1: Crear una sesión nueva en ZAP para borrar el caché del árbol de sitios\n  // Esto asegura que ZAP empiece de cero y vuelva a escanear todo.\n  // ==========================================\n  await axios.get(`${ZAP_URL}/JSON/core/action/newSession/`, {\n    params: { apikey: ZAP_API_KEY, name: 'n8n_Fuzzing_Session', overwrite: 'true' }\n  });\n\n  // ==========================================\n  // FIX 2: Excluir URLs destructivas del Spider\n  // Evitamos que ZAP visite logout.php (mata la sesión) y setup.php (resetea DVWA)\n  // ==========================================\n  const exclusions = ['.*logout.*', '.*setup\\\\.php.*'];\n  for (const regex of exclusions) {\n    await axios.get(`${ZAP_URL}/JSON/spider/action/excludeFromScan/`, {\n      params: { apikey: ZAP_API_KEY, regex: regex }\n    });\n  }\n\n  console.log(\"Configurando sesión (Replacer) en ZAP...\");\n\n  // 1. LIMPIEZA PREVIA del Replacer\n  try {\n    await axios.get(`${ZAP_URL}/JSON/replacer/action/removeRule/`, {\n      params: { apikey: ZAP_API_KEY, description: 'Sesion_DVWA' }\n    });\n  } catch (e) {\n    // Si la regla no existía, ignoramos\n  }\n\n  // 2. Inyectar la Cookie globalmente\n  await axios.get(`${ZAP_URL}/JSON/replacer/action/addRule/`, {\n   params: {\n     apikey: ZAP_API_KEY,\n     description: 'Sesion_DVWA',\n     enabled: 'true',\n     matchType: 'REQ_HEADER',\n     matchRegex: 'false',\n     matchString: 'Cookie',\n     replacement: COOKIE_AUTH\n   }\n  });\n\n  // 3. Iniciar el Spider\n  const spiderResponse = await axios.get(`${ZAP_URL}/JSON/spider/action/scan/`, {\n    params: {\n      apikey: ZAP_API_KEY,\n      url: TARGET_URL,\n      maxChildren: 10,\n      recurse: true\n    }\n  });\n\n  const scanId = spiderResponse.data.scan;\n  console.log(`Iniciando Spider... ID: ${scanId}`);\n\n  // 4. Bucle de espera hasta que el Spider termine\n  let progress = 0;\n  while (progress < 100) {\n    await new Promise(resolve => setTimeout(resolve, 2000));\n\n    const statusResponse = await axios.get(`${ZAP_URL}/JSON/spider/view/status/`, {\n      params: { apikey: ZAP_API_KEY, scanId: scanId }\n    });\n\n    progress = parseInt(statusResponse.data.status);\n    console.log(`Progreso ZAP: ${progress}%`);\n  }\n\n  // 5. Extraer los resultados\n  const urlsResponse = await axios.get(`${ZAP_URL}/JSON/spider/view/results/`, {\n    params: { apikey: ZAP_API_KEY, scanId: scanId }\n  });\n\n  const rawUrls = urlsResponse.data.results || [];\n  \n  // Usamos Set para eliminar todas las URLs repetidas. \n  const uniqueUrls = [...new Set(rawUrls)];\n\n  return [{\n    json: {\n      message: \"Spider completado con sesión activa y entorno limpio\",\n      urlsFound: uniqueUrls,\n      count: uniqueUrls.length\n    }\n  }];\n\n} catch (error) {\n  // Mejora opcional: imprimir el error exacto de Axios si existe\n  const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;\n  return [{ json: { error: errorMsg } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -416,
+        224
+      ],
+      "id": "9ff17002-ebf1-4f03-ad73-8ec3ef83ec56",
+      "name": "ZAP Spider (Descubrimiento)"
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "URL Ejemplo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ffuf": {
+      "main": [
+        [
+          {
+            "node": "Combinaicon de Datos",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Alertas ZAP": {
+      "main": [
+        [
+          {
+            "node": "Combinaicon de Datos",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Preparar las vulnerabilidades": {
+      "main": [
+        [
+          {
+            "node": "Insertar Vulnerabilidades",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reporte Final": {
+      "main": [
+        [
+          {
+            "node": "reporteHTML",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combinaicon de Datos": {
+      "main": [
+        [
+          {
+            "node": "Consolidar Resultados Nuclei",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "reporteHTML": {
+      "main": [
+        [
+          {
+            "node": "AddHTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insertar Escaneos": {
+      "main": [
+        [
+          {
+            "node": "Preparar las vulnerabilidades",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nuclei Scann": {
+      "main": [
+        [
+          {
+            "node": "Combinaicon de Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consolidar Resultados Nuclei": {
+      "main": [
+        [
+          {
+            "node": "Reporte Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "URL Ejemplo": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Crear ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AddHTML": {
+      "main": [
+        [
+          {
+            "node": "Send email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear ID": {
+      "main": [
+        [
+          {
+            "node": "ZAP Spider (Descubrimiento)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Insertar Escaneos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Redis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Item Lists": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ZAP Spider (Descubrimiento)": {
+      "main": [
+        [
+          {
+            "node": "ffuf",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alertas ZAP",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Nuclei Scann",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Item Lists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "URL Ejemplo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  }
+}

@@ -1,0 +1,7 @@
+Reporte_Final_*.md
+*.zip
+ffuf_results.json
+.venv
+nuclei-templates
+sqlmap
+*.exe
