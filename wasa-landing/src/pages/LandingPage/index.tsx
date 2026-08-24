@@ -1,3 +1,5 @@
+import { ScanForm } from '@features/scan-form'; // <-- 1. Agregás esta importación
+
 function LandingPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-950 px-6 text-center text-slate-100">
@@ -5,6 +7,9 @@ function LandingPage() {
       <p className="max-w-xl text-lg text-slate-400">
         Landing page en construcción — CHANGE-00b sienta la base estructural del frontend.
       </p>
+      
+      {/* 2. Renderizás el componente acá abajo para probarlo: */}
+      <ScanForm />
     </main>
   )
 }

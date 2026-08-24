@@ -13,6 +13,7 @@
  * contrato verificable en una traducción que nadie ejercita hasta que
  * rompe en runtime.
  */
+import type { ProblemDetails } from '@shared/api/problemDetails'
 
 /** Datos del formulario de registro, tal como los produce react-hook-form. */
 export interface UserRegister {
@@ -43,13 +44,12 @@ export interface TokenResponse {
 
 /**
  * Cuerpo de error RFC 7807 (Problem Details) emitido por el Bridge.
- * `detail` es `string | null` porque el Bridge siempre emite la clave,
- * aunque su valor pueda ser nulo — no porque la clave pueda faltar.
+ *
+ * Alias del contrato compartido de `shared/api/` (D-4 de design.md,
+ * CHANGE-18): la forma de los cinco miembros se declara una única vez para
+ * todo el frontend, no dentro de esta slice. Referenciar el tipo se borra al
+ * compilar (`verbatimModuleSyntax`) y no arrastra código de red a la slice.
+ * El nombre `AuthApiError` se sigue exportando desde la API pública de la
+ * slice, así que ningún consumidor cambia su import.
  */
-export interface AuthApiError {
-  type: string
-  title: string
-  status: number
-  detail: string | null
-  instance: string
-}
+export type AuthApiError = ProblemDetails
