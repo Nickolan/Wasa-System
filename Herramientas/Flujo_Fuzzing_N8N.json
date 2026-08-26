@@ -1,28 +1,28 @@
 {
-  "name": "Flujo Fuzzing con Postgres y Redis Automatizado V6",
+  "name": "Flujo Fuzzing N8N",
   "nodes": [
     {
       "parameters": {},
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
-        -1440,
-        336
+        -1744,
+        -32
       ],
-      "id": "057319c3-b268-43b5-b393-b0b04c1c67cc",
+      "id": "51bf5b39-6fe1-40de-b7e9-5bf595ac1619",
       "name": "When clicking ‘Execute workflow’"
     },
     {
       "parameters": {
-        "jsCode": "const { execSync } = require('child_process');\nconst fs = require('fs');\n\n// CONFIGURACIÓN DE RUTAS (Asegúrate de que coincidan con tu PC)\nconst FFUF_PATH = 'C:\\\\Herramientas\\\\ffuf_2.1.0_windows_amd64\\\\ffuf.exe';\nconst WORDLIST = 'C:\\\\Herramientas\\\\common.txt';\nconst TARGET = $('Loop Over Items').first().json.target\nconst OUTPUT_FILE = 'C:\\\\Herramientas\\\\ffuf_results.json';\nconst PHPSESSID = $('URL Ejemplo').first().json.phpsessionID;\n\ntry {\n  // Ejecutar ffuf\n  // -s: Modo silencioso para no ensuciar la consola\n\n  const ffufCommand = `ffuf -u ${TARGET}/FUZZ -w ${WORDLIST} -mc 200,204,301,302,307,401,403 -s -of json -o ${OUTPUT_FILE} -t 100 -timeout 15 -H \"Cookie: PHPSESSID=${PHPSESSID}; security=low\"`;\n  \n  console.log(\"Ejecutando ffuf...\");\n  execSync(ffufCommand);\n\n  // Leer y parsear los resultados\n  const rawData = fs.readFileSync(OUTPUT_FILE, 'utf8');\n  const results = JSON.parse(rawData);\n\n  return [{\n    json: {\n      message: \"Fuzzing de directorios completado\",\n      ffufResults: results.results || [],\n    discoveredPaths: results.results ? results.results.length : 0,\n      totalFound: results.results.length,\n      url: ffufCommand\n    }\n  }];\n\n} catch (error) {\n  return [{ json: { error: \"Error en ffuf: \" + error.message } }];\n}"
+        "jsCode": "// === CONFIGURACION (completar antes de ejecutar) ===\n// Lee la variable de entorno si existe; si no, usa el valor por defecto.\nconst getEnv = (k, def) => { try { return ($env && $env[k]) ? $env[k] : def; } catch (e) { return def; } };\nconst { execSync } = require('child_process');\nconst fs = require('fs');\n\n// CONFIGURACIÓN DE RUTAS (Asegúrate de que coincidan con tu PC)\nconst FFUF_PATH = getEnv('FFUF_PATH', 'ffuf');\nconst WORDLIST = getEnv('FFUF_WORDLIST', './wordlists/common.txt');\nconst TARGET = $('Loop Over Items').first().json.target\nconst OUTPUT_FILE = getEnv('WASA_TOOLS_DIR', './resultados') + '/ffuf_results.json';\nconst PHPSESSID = $('URL Ejemplo').first().json.phpsessionID;\n\ntry {\n  // Ejecutar ffuf\n  // -mc 200,301: Filtra solo resultados exitosos o redirecciones\n  // -s: Modo silencioso para no ensuciar la consola\n  // const command = `${FFUF_PATH} -u ${TARGET}/FUZZ -w ${WORDLIST} \"Cookie: PHPSESSID=${PHPSESSID}; security=low\" -mc 200,301 -s -of json`;\n\n  const ffufCommand = `ffuf -u ${TARGET}/FUZZ -w ${WORDLIST} -mc 200,204,301,302,307,401,403 -s -of json -o ${OUTPUT_FILE} -t 100 -timeout 15 -H \"Cookie: PHPSESSID=${PHPSESSID}; security=low\"`;\n  \n  console.log(\"Ejecutando ffuf...\");\n  execSync(ffufCommand);\n\n  // Leer y parsear los resultados\n  const rawData = fs.readFileSync(OUTPUT_FILE, 'utf8');\n  const results = JSON.parse(rawData);\n\n  return [{\n    json: {\n      message: \"Fuzzing de directorios completado\",\n      ffufResults: results.results || [],\n    discoveredPaths: results.results ? results.results.length : 0,\n      totalFound: results.results.length,\n      url: ffufCommand\n    }\n  }];\n\n} catch (error) {\n  return [{ json: { error: \"Error en ffuf: \" + error.message } }];\n}"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -80,
-        576
+        -384,
+        208
       ],
-      "id": "bea673fc-353f-4557-88c3-81df8a6469c2",
+      "id": "4a85c0ea-412d-4052-bd09-48b6f9968fb8",
       "name": "ffuf"
     },
     {
@@ -32,10 +32,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -32,
-        384
+        -336,
+        16
       ],
-      "id": "ad94517e-5097-4b2a-9edb-9bbbc5aff012",
+      "id": "d972578c-5bb2-4690-9c47-c9c7c1cd0b48",
       "name": "Alertas ZAP"
     },
     {
@@ -45,23 +45,23 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2112,
-        96
+        1808,
+        -272
       ],
-      "id": "3baf2bf4-f25b-487e-bdb4-f29a1dbfd125",
+      "id": "45924053-0951-49b0-9a43-90c1d6c25d63",
       "name": "Preparar las vulnerabilidades"
     },
     {
       "parameters": {
-        "jsCode": "// Generar reporte detallado\nconst data = $input.first().json;\nconst vulns = data.vulnerabilities;\nconst stats = $input.first().json.statistics;\n\nconst TARGET_URL = $('Loop Over Items').first().json.target\nconst scanId = $('Crear ID').first().json.id;\n\n// ⏱️ Cálculo del tiempo de ejecución total del flujo\nconst flowStartTime = $('URL Ejemplo').first().json.flowStartTime;\nconst flowEndTime = Date.now();\nconst durationMs = flowEndTime - flowStartTime;\n\nconst durationMinutes = Math.floor(durationMs / 60000);\nconst durationSeconds = Math.floor((durationMs % 60000) / 1000);\nconst durationFormatted = durationMinutes > 0\n  ? `${durationMinutes} min ${durationSeconds} seg`\n  : `${durationSeconds} seg`;\n\nconst report = `\n# 🔍 Reporte de Fuzzing de Aplicación Web\n\n**Fecha del Escaneo**: ${new Date(data.scanDate).toLocaleString('es-MX')}\n**Aplicación Objetivo**: ${TARGET_URL}\n**Total de Vulnerabilidades**: ${stats.total}\n**Scan ID**: ${scanId}\n**⏱️ Tiempo de Ejecución**: ${durationFormatted} (${(durationMs / 1000).toFixed(1)}s)\n\n---\n\n## 📊 Resumen Ejecutivo\n\n| Severidad | Cantidad | Porcentaje |\n|-----------|----------|------------|\n| 🔴 Crítica | ${stats.critical} | ${((stats.critical/stats.total)*100).toFixed(1)}% |\n| 🟠 Alta | ${stats.high} | ${((stats.high/stats.total)*100).toFixed(1)}% |\n| 🟡 Media | ${stats.medium} | ${((stats.medium/stats.total)*100).toFixed(1)}% |\n| 🟢 Baja | ${stats.low} | ${((stats.low/stats.total)*100).toFixed(1)}% |\n\n---\n\n## ⏱️ Métricas de Ejecución\n\n| Métrica | Valor |\n|---------|-------|\n| Inicio del escaneo | ${new Date(flowStartTime).toLocaleString('es-MX')} |\n| Fin del escaneo | ${new Date(flowEndTime).toLocaleString('es-MX')} |\n| Tiempo total de ejecución | ${durationFormatted} |\n| Promedio por vulnerabilidad | ${stats.total > 0 ? (durationMs / stats.total / 1000).toFixed(2) + 's' : 'N/A'} |\n\n---\n\n## 🚨 Vulnerabilidades Críticas\n\n${vulns.filter(v => v.severity === 'critical').map((v, i) => `\n### ${i+1}. ${v.type}\n\n**URL**: ${v.url}\n**Fuente**: ${v.source}\n**CWE ID (OWASP Mapping)**: ${v.cweid ? 'CWE-' + v.cweid : 'N/A'}\n\n**Descripción**:\n${v.description}\n\n**Solución Recomendada**:\n${v.solution}\n\n**Evidencia**:\n\\`\\`\\`\n${v.evidence ? v.evidence.substring(0, 200) : 'N/A'}\n\\`\\`\\`\n\n---\n`).join('\\n') || '*No se encontraron vulnerabilidades críticas.*'}\n\n## ⚠️ Vulnerabilidades Altas\n\n${vulns.filter(v => v.severity === 'high').slice(0, 10).map((v, i) => `\n### ${i+1}. ${v.type}\n\n**URL**: ${v.url}\n**Descripción**: ${v.description.substring(0, 150)}...\n**Solución**: ${v.solution.substring(0, 150)}...\n\n---\n`).join('\\n') || '*No se encontraron vulnerabilidades altas.*'}\n\n${vulns.filter(v => v.severity === 'high').length > 5 ? `*...y ${vulns.filter(v => v.severity === 'high').length - 5} vulnerabilidades altas adicionales.*` : ''}\n\n## 📋 Recomendaciones por Categoría\n\n${Object.entries(\n  vulns.reduce((acc, v) => {\n    acc[v.type] = (acc[v.type] || 0) + 1;\n    return acc;\n  }, {})\n).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([type, count]) =>\n  `- **${type}**: ${count} ocurrencias`\n).join('\\n')}\n\n## 🛡️ Plan de Remediación\n\n1. **Prioridad Inmediata** (Críticas y Altas):\n   - Inyecciones SQL: Implementar prepared statements\n   - XSS: Implementar output encoding\n   - CSRF: Agregar tokens anti-CSRF\n\n2. **Corto Plazo** (Medias):\n   - Configuraciones inseguras\n   - Falta de headers de seguridad\n   - Información sensible expuesta\n\n3. **Largo Plazo** (Bajas):\n   - Mejoras en la documentación de API\n   - Optimización de mensajes de error\n\n---\n\n*Reporte generado automáticamente por sistema de fuzzing*\n*Herramientas utilizadas: OWASP ZAP, SQLMap, ffuf*\n*Tiempo total de ejecución del flujo: ${durationFormatted}*\n`;\n\nconst fs = require('fs');\n\nconst reportPath = `C:\\\\Herramientas\\\\Reportes\\\\Reporte_Final_${Date.now()}.md`;\n\nfs.writeFileSync(reportPath, report);\n\nreturn [{\n  json: {\n    report: report,\n    reportPath: reportPath,\n    statistics: stats,\n    scanDate: $input.first().json.scanDate,\n    vulns,\n    executionTime: {\n      startTime: flowStartTime,\n      endTime: flowEndTime,\n      durationMs: durationMs,\n      durationFormatted: durationFormatted\n    }\n  }\n}];\n"
+        "jsCode": "// === CONFIGURACION (completar antes de ejecutar) ===\n// Lee la variable de entorno si existe; si no, usa el valor por defecto.\nconst getEnv = (k, def) => { try { return ($env && $env[k]) ? $env[k] : def; } catch (e) { return def; } };\n// Generar reporte detallado\nconst data = $input.first().json;\nconst vulns = data.vulnerabilities;\nconst stats = $input.first().json.statistics;\n\nconst TARGET_URL = $('Loop Over Items').first().json.target\nconst scanId = $('Crear ID').first().json.id;\n\n// ⏱️ Cálculo del tiempo de ejecución total del flujo\nconst flowStartTime = $('URL Ejemplo').first().json.flowStartTime;\nconst flowEndTime = Date.now();\nconst durationMs = flowEndTime - flowStartTime;\n\nconst durationMinutes = Math.floor(durationMs / 60000);\nconst durationSeconds = Math.floor((durationMs % 60000) / 1000);\nconst durationFormatted = durationMinutes > 0\n  ? `${durationMinutes} min ${durationSeconds} seg`\n  : `${durationSeconds} seg`;\n\nconst report = `\n# 🔍 Reporte de Fuzzing de Aplicación Web\n\n**Fecha del Escaneo**: ${new Date(data.scanDate).toLocaleString('es-MX')}\n**Aplicación Objetivo**: ${TARGET_URL}\n**Total de Vulnerabilidades**: ${stats.total}\n**Scan ID**: ${scanId}\n**⏱️ Tiempo de Ejecución**: ${durationFormatted} (${(durationMs / 1000).toFixed(1)}s)\n\n---\n\n## 📊 Resumen Ejecutivo\n\n| Severidad | Cantidad | Porcentaje |\n|-----------|----------|------------|\n| 🔴 Crítica | ${stats.critical} | ${((stats.critical/stats.total)*100).toFixed(1)}% |\n| 🟠 Alta | ${stats.high} | ${((stats.high/stats.total)*100).toFixed(1)}% |\n| 🟡 Media | ${stats.medium} | ${((stats.medium/stats.total)*100).toFixed(1)}% |\n| 🟢 Baja | ${stats.low} | ${((stats.low/stats.total)*100).toFixed(1)}% |\n\n---\n\n## ⏱️ Métricas de Ejecución\n\n| Métrica | Valor |\n|---------|-------|\n| Inicio del escaneo | ${new Date(flowStartTime).toLocaleString('es-MX')} |\n| Fin del escaneo | ${new Date(flowEndTime).toLocaleString('es-MX')} |\n| Tiempo total de ejecución | ${durationFormatted} |\n| Promedio por vulnerabilidad | ${stats.total > 0 ? (durationMs / stats.total / 1000).toFixed(2) + 's' : 'N/A'} |\n\n---\n\n## 🚨 Vulnerabilidades Críticas\n\n${vulns.filter(v => v.severity === 'critical').map((v, i) => `\n### ${i+1}. ${v.type}\n\n**URL**: ${v.url}\n**Fuente**: ${v.source}\n**CWE ID (OWASP Mapping)**: ${v.cweid ? 'CWE-' + v.cweid : 'N/A'}\n\n**Descripción**:\n${v.description}\n\n**Solución Recomendada**:\n${v.solution}\n\n**Evidencia**:\n\\`\\`\\`\n${v.evidence ? v.evidence.substring(0, 200) : 'N/A'}\n\\`\\`\\`\n\n---\n`).join('\\n') || '*No se encontraron vulnerabilidades críticas.*'}\n\n## ⚠️ Vulnerabilidades Altas\n\n${vulns.filter(v => v.severity === 'high').slice(0, 10).map((v, i) => `\n### ${i+1}. ${v.type}\n\n**URL**: ${v.url}\n**Descripción**: ${v.description.substring(0, 150)}...\n**Solución**: ${v.solution.substring(0, 150)}...\n\n---\n`).join('\\n') || '*No se encontraron vulnerabilidades altas.*'}\n\n${vulns.filter(v => v.severity === 'high').length > 5 ? `*...y ${vulns.filter(v => v.severity === 'high').length - 5} vulnerabilidades altas adicionales.*` : ''}\n\n## 📋 Recomendaciones por Categoría\n\n${Object.entries(\n  vulns.reduce((acc, v) => {\n    acc[v.type] = (acc[v.type] || 0) + 1;\n    return acc;\n  }, {})\n).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([type, count]) =>\n  `- **${type}**: ${count} ocurrencias`\n).join('\\n')}\n\n## 🛡️ Plan de Remediación\n\n1. **Prioridad Inmediata** (Críticas y Altas):\n   - Inyecciones SQL: Implementar prepared statements\n   - XSS: Implementar output encoding\n   - CSRF: Agregar tokens anti-CSRF\n\n2. **Corto Plazo** (Medias):\n   - Configuraciones inseguras\n   - Falta de headers de seguridad\n   - Información sensible expuesta\n\n3. **Largo Plazo** (Bajas):\n   - Mejoras en la documentación de API\n   - Optimización de mensajes de error\n\n---\n\n*Reporte generado automáticamente por sistema de fuzzing*\n*Herramientas utilizadas: OWASP ZAP, SQLMap, ffuf*\n*Tiempo total de ejecución del flujo: ${durationFormatted}*\n`;\n\nconst fs = require('fs');\n\nconst reportPath = getEnv('WASA_REPORTS_DIR', './reportes') + `/Reporte_Final_${Date.now()}.md`;\n\nfs.writeFileSync(reportPath, report);\n\nreturn [{\n  json: {\n    report: report,\n    reportPath: reportPath,\n    statistics: stats,\n    scanDate: $input.first().json.scanDate,\n    vulns,\n    executionTime: {\n      startTime: flowStartTime,\n      endTime: flowEndTime,\n      durationMs: durationMs,\n      durationFormatted: durationFormatted\n    }\n  }\n}];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1392,
-        384
+        1088,
+        16
       ],
-      "id": "27dbaf69-2507-4a70-b018-b0df1a6e8b97",
+      "id": "39716ce5-b2ee-4faf-9821-5355cc57cecb",
       "name": "Reporte Final"
     },
     {
@@ -195,17 +195,11 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2384,
-        32
+        2080,
+        -336
       ],
-      "id": "37dc09d0-6fe5-4de6-b878-8561dc465562",
-      "name": "Insertar Vulnerabilidades",
-      "credentials": {
-        "postgres": {
-          "id": "<REDACTADO>",
-          "name": "Postgres account"
-        }
-      }
+      "id": "f4d273ff-dbdb-4dae-b603-2ce203b1a833",
+      "name": "Insertar Vulnerabilidades"
     },
     {
       "parameters": {
@@ -329,17 +323,11 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        1888,
-        144
+        1584,
+        -224
       ],
-      "id": "5c6f46fa-a8b3-4e3c-b5ca-0c7245be0086",
-      "name": "Insertar Escaneos",
-      "credentials": {
-        "postgres": {
-          "id": "<REDACTADO>",
-          "name": "Postgres account"
-        }
-      }
+      "id": "66f2f490-9bb8-4574-8212-f5152fb83844",
+      "name": "Insertar Escaneos"
     },
     {
       "parameters": {
@@ -351,17 +339,17 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        880,
-        368
+        576,
+        0
       ],
-      "id": "7718652d-83be-4c5f-914b-709adf03508c",
+      "id": "fa825de9-bd6a-4439-b89f-da184ad56ea5",
       "name": "Combinaicon de Datos",
       "alwaysOutputData": true
     },
     {
       "parameters": {
-        "fromEmail": "<CORREO_DESTINO>",
-        "toEmail": "<CORREO_DESTINO>",
+        "fromEmail": "tu-correo@example.com",
+        "toEmail": "tu-correo@example.com",
         "subject": "=Reporte de Fuzzing",
         "html": "={{ $json.correoFinal }}",
         "options": {
@@ -371,18 +359,12 @@
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "position": [
-        2144,
-        592
+        1840,
+        224
       ],
-      "id": "48bab56b-f5ef-4661-a934-d2816049ec78",
+      "id": "c51a726e-9af3-4b6b-8a31-25eb65d7c76f",
       "name": "Send email",
-      "webhookId": "2beda226-6b6b-43e5-884e-edf7853e0084",
-      "credentials": {
-        "smtp": {
-          "id": "<REDACTADO>",
-          "name": "SMTP account"
-        }
-      }
+      "webhookId": "3e75072b-fbef-4ff9-8ed6-9649ed8fd838"
     },
     {
       "parameters": {
@@ -393,23 +375,23 @@
       "type": "n8n-nodes-base.markdown",
       "typeVersion": 1,
       "position": [
-        1664,
-        432
+        1360,
+        64
       ],
-      "id": "3f79c90f-1de3-420a-a5a7-286db5e16ff0",
+      "id": "6acc8240-1370-4db8-a99e-cf93c7c1acf9",
       "name": "reporteHTML"
     },
     {
       "parameters": {
-        "jsCode": "const { exec } = require('child_process');\nconst util = require('util');\nconst fs = require('fs');\nconst process = require('process');\n\nconst execPromise = util.promisify(exec);\n\n// Definición de rutas (Asegúrate de que el usuario 'Nicolas' es el correcto en este entorno)\nconst NUCLEI_PATH = 'nuclei'; \nconst TEMPLATES_PATH = 'C:\\\\Herramientas\\\\nuclei-templates';\nconst OUTPUT_FILE = 'C:\\\\Herramientas\\\\nuclei_results_final.json';\n\nconst PHPSESSID = $('URL Ejemplo').first().json.phpsessionID;\nlet target = $('Loop Over Items').first().json.target;\nif (target.includes('localhost')) {\n   target = target.replace('localhost', '127.0.0.1');\n}\n// Entorno unificado\nconst execOptions = {\n    timeout: 270000,\n    maxBuffer: 1024 * 1024 * 50, // 50MB\n    env: {\n      ...process.env,\n      USERPROFILE: 'C:\\\\Users\\\\Nicolas',\n      HOME: 'C:\\\\Users\\\\Nicolas',\n      APPDATA: 'C:\\\\Users\\\\Nicolas\\\\AppData\\\\Roaming',\n      LOCALAPPDATA: 'C:\\\\Users\\\\Nicolas\\\\AppData\\\\Local'\n    }\n};\n\ntry {\n  console.log(\"Iniciando escaneo con Nuclei...\");\n\n  // Limpiamos resultados viejos\n  if (fs.existsSync(OUTPUT_FILE)) { \n      fs.unlinkSync(OUTPUT_FILE); \n  }\n\n  // Usamos NUCLEI_PATH, agregamos filtro de severidad y usamos -je\n  const simpleCommand = `\"${NUCLEI_PATH}\" -u \"${target}\" -t \"${TEMPLATES_PATH}\" -ni -silent -c 100 -rl 500 -H \"Cookie: PHPSESSID=${PHPSESSID}; security=low\" -je \"${OUTPUT_FILE}\"`;\n  \n  console.log(\"Ejecutando comando principal: \", simpleCommand);\n  \n  // EJECUCIÓN ASÍNCRONA\n  try {\n    await execPromise(simpleCommand, execOptions); \n  } catch (execError) {\n    console.log(\"Aviso de ejecución de Nuclei (Código distinto a 0):\", execError.message);\n  }\n\n  // Leer y procesar JSON\n  let results = [];\n  const existeArchivo = fs.existsSync(OUTPUT_FILE);\n  \n  if (existeArchivo) {\n    const rawData = fs.readFileSync(OUTPUT_FILE, 'utf8').trim();\n    if (rawData) {\n      try {\n        const parsed = JSON.parse(rawData);\n        results = Array.isArray(parsed) ? parsed : [parsed];\n      } catch (e) {\n        // Fallback para formato JSONL\n        results = rawData.split('\\n')\n                         .filter(line => line.trim() !== '')\n                         .map(line => JSON.parse(line));\n      }\n    }\n  }\n\n  // Prueba de versión usando también la ruta absoluta\n  let responseVersion = \"\";\n  try {\n    const { stdout, stderr } = await execPromise(`\"${NUCLEI_PATH}\" -version`, execOptions);\n    responseVersion = (stdout || stderr).trim(); \n  } catch (error) {\n    responseVersion = error.message;\n  }\n\n  return [{\n    json: {\n      message: results.length > 0 ? \"¡Vulnerabilidades detectadas!\" : \"Escaneo completado (Sin hallazgos)\",\n      count: results.length,\n      nucleiAlerts: results,\n      debug: {\n        existeArchivo,\n        targetUsado: target,\n        versionCheck: responseVersion\n      }\n    }\n  }];\n\n} catch (error) {\n  return [{ json: { error: \"Fallo crítico en el nodo Nuclei: \" + error.message } }];\n}"
+        "jsCode": "// === CONFIGURACION (completar antes de ejecutar) ===\n// Lee la variable de entorno si existe; si no, usa el valor por defecto.\nconst getEnv = (k, def) => { try { return ($env && $env[k]) ? $env[k] : def; } catch (e) { return def; } };\nconst { exec } = require('child_process');\nconst util = require('util');\nconst fs = require('fs');\nconst process = require('process');\n\nconst execPromise = util.promisify(exec);\n\n// Definición de rutas (ajustar según el entorno donde corra n8n)\nconst NUCLEI_PATH = getEnv('NUCLEI_PATH', 'nuclei'); \nconst TEMPLATES_PATH = getEnv('NUCLEI_TEMPLATES', './nuclei-templates');\nconst OUTPUT_FILE = getEnv('WASA_TOOLS_DIR', './resultados') + '/nuclei_results_final.json';\n\nconst PHPSESSID = $('URL Ejemplo').first().json.phpsessionID;\nlet target = $('Loop Over Items').first().json.target;\nif (target.includes('localhost')) {\n   target = target.replace('localhost', '127.0.0.1');\n}\n// Entorno unificado\nconst execOptions = {\n    timeout: 270000,\n    maxBuffer: 1024 * 1024 * 50, // 50MB\n    env: {\n      ...process.env,\n      // Perfil de usuario del host (necesario para que Nuclei encuentre su config)\n      USERPROFILE: getEnv('USERPROFILE', process.env.USERPROFILE),\n      HOME: getEnv('HOME', process.env.HOME || process.env.USERPROFILE),\n      APPDATA: process.env.APPDATA,\n      LOCALAPPDATA: process.env.LOCALAPPDATA\n    }\n};\n\ntry {\n  console.log(\"Iniciando escaneo con Nuclei...\");\n\n  // Limpiamos resultados viejos\n  if (fs.existsSync(OUTPUT_FILE)) { \n      fs.unlinkSync(OUTPUT_FILE); \n  }\n\n  // Usamos NUCLEI_PATH, agregamos filtro de severidad y usamos -je\n  const simpleCommand = `\"${NUCLEI_PATH}\" -u \"${target}\" -t \"${TEMPLATES_PATH}\" -ni -silent -c 100 -rl 500 -H \"Cookie: PHPSESSID=${PHPSESSID}; security=low\" -je \"${OUTPUT_FILE}\"`;\n  \n  console.log(\"Ejecutando comando principal: \", simpleCommand);\n  \n  // EJECUCIÓN ASÍNCRONA\n  try {\n    await execPromise(simpleCommand, execOptions); \n  } catch (execError) {\n    console.log(\"Aviso de ejecución de Nuclei (Código distinto a 0):\", execError.message);\n  }\n\n  // Leer y procesar JSON\n  let results = [];\n  const existeArchivo = fs.existsSync(OUTPUT_FILE);\n  \n  if (existeArchivo) {\n    const rawData = fs.readFileSync(OUTPUT_FILE, 'utf8').trim();\n    if (rawData) {\n      try {\n        const parsed = JSON.parse(rawData);\n        results = Array.isArray(parsed) ? parsed : [parsed];\n      } catch (e) {\n        // Fallback para formato JSONL\n        results = rawData.split('\\n')\n                         .filter(line => line.trim() !== '')\n                         .map(line => JSON.parse(line));\n      }\n    }\n  }\n\n  // Prueba de versión usando también la ruta absoluta\n  let responseVersion = \"\";\n  try {\n    const { stdout, stderr } = await execPromise(`\"${NUCLEI_PATH}\" -version`, execOptions);\n    responseVersion = (stdout || stderr).trim(); \n  } catch (error) {\n    responseVersion = error.message;\n  }\n\n  return [{\n    json: {\n      message: results.length > 0 ? \"¡Vulnerabilidades detectadas!\" : \"Escaneo completado (Sin hallazgos)\",\n      count: results.length,\n      nucleiAlerts: results,\n      debug: {\n        existeArchivo,\n        targetUsado: target,\n        versionCheck: responseVersion\n      }\n    }\n  }];\n\n} catch (error) {\n  return [{ json: { error: \"Fallo crítico en el nodo Nuclei: \" + error.message } }];\n}"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        0,
-        176
+        -304,
+        -192
       ],
-      "id": "5ae9b5e3-1974-44a4-bc0c-f8883da9ce5d",
+      "id": "b6ace3c2-152b-4fec-8e2a-36a9b3f51210",
       "name": "Nuclei Scann",
       "onError": "continueRegularOutput"
     },
@@ -420,10 +402,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1168,
-        384
+        864,
+        16
       ],
-      "id": "ce421726-9797-4a3a-af94-d0b2c7c03682",
+      "id": "20cf6f54-113f-4e6b-8e1c-f4aa44e4b7ec",
       "name": "Consolidar Resultados Nuclei"
     },
     {
@@ -440,23 +422,23 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.3,
       "position": [
-        -1424,
-        576
+        -1728,
+        208
       ],
-      "id": "8145d63a-1658-427e-a1c9-35931fc7f482",
+      "id": "5595db67-91c5-4702-a5f5-c2f1adcfd509",
       "name": "Schedule Trigger"
     },
     {
       "parameters": {
-        "jsCode": "// Lista de aplicaciones a escanear\nconst objetivos = [\n  { target: \"http://localhost:8081/\", nombre: \"DVWA\" }\n];\n\n// Capturamos el momento exacto de inicio del flujo\nconst flowStartTime = Date.now();\n\n// Mapeamos para que n8n entienda que son \"items\" separados\nreturn objetivos.map(app => {\n  return {\n    json: {\n      target: app.target,\n      nombre: app.nombre,\n      zap_api_key: \"<ZAP_API_KEY>\",\n      zap_url: \"http://localhost:8090\",\n      phpsessionID: \"<PHPSESSID>\",\n      flowStartTime: flowStartTime  // ⏱️ Inicio del flujo completo\n    }\n  };\n});\n"
+        "jsCode": "// === CONFIGURACION (completar antes de ejecutar) ===\n// Lee la variable de entorno si existe; si no, usa el valor por defecto.\nconst getEnv = (k, def) => { try { return ($env && $env[k]) ? $env[k] : def; } catch (e) { return def; } };\nconst ZAP_API_KEY   = getEnv('ZAP_API_KEY', 'REEMPLAZAR_CON_TU_ZAP_API_KEY');\nconst ZAP_URL       = getEnv('ZAP_URL', 'http://localhost:8090');\nconst TARGET_DEMO   = getEnv('WASA_TARGET_URL', 'http://localhost:8081/');\nconst PHPSESSID_DEMO= getEnv('WASA_PHPSESSID', 'REEMPLAZAR_CON_TU_PHPSESSID');\n// ===================================================\n\n// Detecta si esta corrida fue disparada por el Webhook Trigger (CHANGE-21).\n// Si sí, usa los datos reales del Bridge; si no (Manual/Schedule), mantiene\n// el comportamiento de prueba original hardcodeado a DVWA.\nlet webhookPayload = null;\ntry {\n  const webhookItem = $('Webhook').first().json;\n  webhookPayload = webhookItem.body ?? webhookItem;\n} catch (e) {\n  webhookPayload = null;\n}\n\nconst flowStartTime = Date.now();\n\nif (webhookPayload && webhookPayload.target_url) {\n  return [{\n    json: {\n      target: webhookPayload.target_url,\n      nombre: \"WASA-Bridge\",\n      zap_api_key: ZAP_API_KEY,\n      zap_url: ZAP_URL,\n      phpsessionID: webhookPayload.phpsessid,\n      sqlmap_level: webhookPayload.sqlmap_level,\n      sqlmap_risk: webhookPayload.sqlmap_risk,\n      flowStartTime\n    }\n  }]\n}\n\n// Lista de aplicaciones a escanear\nconst objetivos = [\n  { target: TARGET_DEMO, nombre: \"DVWA\" }\n];\n\n\n// Mapeamos para que n8n entienda que son \"items\" separados\nreturn objetivos.map(app => {\n  return {\n    json: {\n      target: app.target,\n      nombre: app.nombre,\n      zap_api_key: ZAP_API_KEY,\n      zap_url: ZAP_URL,\n      phpsessionID: PHPSESSID_DEMO,\n      sqlmap_level: 2,\n      sqlmap_risk: 1,\n      flowStartTime: flowStartTime  // ⏱️ Inicio del flujo completo\n    }\n  };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1232,
-        288
+        -1536,
+        -80
       ],
-      "id": "8f96ac7b-d83f-4558-ae69-8794c1c415f7",
+      "id": "f12daf9b-6c90-487a-8841-9cda346db011",
       "name": "URL Ejemplo"
     },
     {
@@ -469,10 +451,10 @@
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        -992,
-        272
+        -1296,
+        -96
       ],
-      "id": "332ddea6-d148-481b-814b-d791cb3e629a",
+      "id": "e26f8231-af7f-40c2-82b7-108a0db80f87",
       "name": "Loop Over Items"
     },
     {
@@ -482,33 +464,27 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1904,
-        528
+        1600,
+        160
       ],
-      "id": "ca0a6347-4152-44b0-a85f-d3ad780f9228",
+      "id": "942859b6-8bc7-45e1-a0c9-7e78f0e9c1ec",
       "name": "AddHTML"
     },
     {
       "parameters": {
         "operation": "push",
         "list": "sqlmap_tasks",
-        "messageData": "={{ JSON.stringify({ \n\"urls\": $json.urlsFound, \n\"scan_id\": $('Crear ID').item.json.id,\n\"cookie\": \"PHPSESSID=\" + $('URL Ejemplo').item.json.phpsessionID + \"; security=low\",\n\"level\": 2,\n\"risk\": 1\n}) }}",
+        "messageData": "={{ JSON.stringify({ \n\"urls\": $json.urlsFound, \n\"scan_id\": $('Crear ID').item.json.id,\n\"cookie\": \"PHPSESSID=\" + $('URL Ejemplo').item.json.phpsessionID + \"; security=low\",\n\"level\": $('URL Ejemplo').item.json.sqlmap_level,\n\"risk\": $('URL Ejemplo').item.json.sqlmap_risk\n}) }}",
         "tail": true
       },
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        544,
-        64
+        240,
+        -304
       ],
-      "id": "9065f196-bfb6-4e97-8192-a7a934ff03c3",
-      "name": "Redis",
-      "credentials": {
-        "redis": {
-          "id": "<REDACTADO>",
-          "name": "Redis account"
-        }
-      }
+      "id": "5b23a901-c6e3-4e09-852a-f53b9f10ecf4",
+      "name": "Redis"
     },
     {
       "parameters": {
@@ -630,17 +606,11 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        -704,
-        240
+        -1008,
+        -128
       ],
-      "id": "0e96e5c9-f316-4e30-b5fd-3aaa5b10dfe5",
-      "name": "Crear ID",
-      "credentials": {
-        "postgres": {
-          "id": "<REDACTADO>",
-          "name": "Postgres account"
-        }
-      }
+      "id": "a00a2c16-3a34-47f4-b882-6ab6830ce7bf",
+      "name": "Crear ID"
     },
     {
       "parameters": {
@@ -659,10 +629,10 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        1632,
-        240
+        1328,
+        -128
       ],
-      "id": "e3be30ea-71ad-4fd8-99c6-2ac5abb2ba91",
+      "id": "cc5e35f6-a3e5-439f-bfef-3a5130aaf27e",
       "name": "Edit Fields"
     },
     {
@@ -692,10 +662,10 @@
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2.3,
       "position": [
-        256,
-        32
+        -48,
+        -336
       ],
-      "id": "2cd9b947-1154-4d16-b63c-fbfa68188986",
+      "id": "bec91cd4-3014-4a14-8f27-4fdb6d0c580b",
       "name": "Filter"
     },
     {
@@ -707,10 +677,10 @@
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        0,
-        0
+        -304,
+        -368
       ],
-      "id": "ed33d827-e060-4005-9099-dfe2d775c5aa",
+      "id": "1bf8cec8-3dcd-4498-8e61-698c1c65a859",
       "name": "Item Lists"
     },
     {
@@ -720,25 +690,32 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -416,
-        224
+        -720,
+        -144
       ],
-      "id": "9ff17002-ebf1-4f03-ad73-8ec3ef83ec56",
+      "id": "e296cfa5-7b16-4575-976d-f0792be0f97d",
       "name": "ZAP Spider (Descubrimiento)"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wasa-scan",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1824,
+        -304
+      ],
+      "id": "8e84818b-6a9d-4f68-be0a-3a9964f27ff1",
+      "name": "Webhook",
+      "webhookId": "ce8777db-9280-4b33-8123-a9614e99883d"
     }
   ],
+  "pinData": {},
   "connections": {
-    "When clicking ‘Execute workflow’": {
-      "main": [
-        [
-          {
-            "node": "URL Ejemplo",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "ffuf": {
       "main": [
         [
@@ -958,6 +935,28 @@
         ]
       ]
     },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "URL Ejemplo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "URL Ejemplo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Schedule Trigger": {
       "main": [
         [
@@ -970,9 +969,20 @@
       ]
     }
   },
-  "active": true,
+  "active": false,
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate"
-  }
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": -1,
+    "availableInMCP": false
+  },
+  "versionId": "66ae04aa-7fc9-4cc7-8814-c95e51eaf22d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "279750e54c19fe28dd900064a3246fcf4e041527fe2e0ed9e150e5f13a64f187"
+  },
+  "id": "EdcXkTtlH5xIMwre",
+  "tags": []
 }
