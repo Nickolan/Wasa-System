@@ -25,6 +25,7 @@ from fastapi_bridge.uow.scan_unit_of_work import ScanUoW
 
 TEST_TARGET_URL = "https://objetivo.test.local/login"
 TEST_PHPSESSID = "sessid-de-prueba"
+TEST_USER_EMAIL = "usuario@test.local"
 
 
 def build_request(**overrides: object) -> ScanRequest:
@@ -99,6 +100,7 @@ async def test_fake_n8n_repository_records_the_received_payload():
         sqlmap_level=1,
         sqlmap_risk=1,
         scan_id="scan-de-prueba-001",
+        email=TEST_USER_EMAIL,
     )
 
     result = await fake.forward_scan(payload)
@@ -115,6 +117,7 @@ async def test_fake_n8n_repository_raises_when_configured_to_fail():
         sqlmap_level=1,
         sqlmap_risk=1,
         scan_id="scan-de-prueba-002",
+        email=TEST_USER_EMAIL,
     )
 
     with pytest.raises(N8nUnavailableError):
@@ -160,7 +163,7 @@ async def test_injected_uow_factory_wins_over_the_default():
     factory = FakeUoWFactory()
     service = ScanService(uow_factory=factory)
 
-    await service.start_scan(build_request())
+    await service.start_scan(build_request(), TEST_USER_EMAIL)
 
     assert len(factory.created) == 1
     assert len(factory.created[0].n8n.received_payloads) == 1
@@ -172,9 +175,22 @@ async def test_injected_uow_factory_wins_over_the_default():
 async def test_start_scan_returns_a_scan_response():
     service = ScanService(uow_factory=FakeUoWFactory())
 
-    response = await service.start_scan(build_request())
+    response = await service.start_scan(build_request(), TEST_USER_EMAIL)
 
     assert isinstance(response, ScanResponse)
+
+
+async def test_start_scan_forwards_the_caller_supplied_email_to_the_payload():
+    # 2.1 (CHANGE-23, D-1/D-2): el email es un segundo argumento obligatorio
+    # de `start_scan`, separado de la `ScanRequest`, y viaja intacto hasta el
+    # `N8nPayload` que recibe el repositorio.
+    factory = FakeUoWFactory()
+    service = ScanService(uow_factory=factory)
+
+    await service.start_scan(build_request(), "usuario@test.local")
+
+    payload = factory.created[0].n8n.received_payloads[0]
+    assert payload.email == "usuario@test.local"
 
 
 # --- Identificador del escaneo (D-3) ----------------------------------------
@@ -183,7 +199,7 @@ async def test_start_scan_returns_a_scan_response():
 async def test_scan_id_has_the_shape_of_a_uuid_v4():
     service = ScanService(uow_factory=FakeUoWFactory())
 
-    response = await service.start_scan(build_request())
+    response = await service.start_scan(build_request(), TEST_USER_EMAIL)
 
     assert uuid.UUID(response.scan_id).version == 4
 
@@ -192,8 +208,8 @@ async def test_two_identical_requests_on_the_same_service_receive_distinct_scan_
     service = ScanService(uow_factory=FakeUoWFactory())
     request = build_request()
 
-    first_response = await service.start_scan(request)
-    second_response = await service.start_scan(request)
+    first_response = await service.start_scan(request, TEST_USER_EMAIL)
+    second_response = await service.start_scan(request, TEST_USER_EMAIL)
 
     assert first_response.scan_id != second_response.scan_id
 
@@ -202,7 +218,7 @@ async def test_scan_id_is_not_derived_from_any_request_field():
     service = ScanService(uow_factory=FakeUoWFactory())
     request = build_request(phpsessid="sessid-particular-1234")
 
-    response = await service.start_scan(request)
+    response = await service.start_scan(request, TEST_USER_EMAIL)
 
     assert str(request.target_url) not in response.scan_id
     assert request.phpsessid not in response.scan_id
@@ -223,7 +239,7 @@ async def test_unknown_request_field_cannot_pin_the_scan_id():
     )
     service = ScanService(uow_factory=FakeUoWFactory())
 
-    response = await service.start_scan(request)
+    response = await service.start_scan(request, TEST_USER_EMAIL)
 
     assert response.scan_id != "scan-id-impuesto-por-el-cliente"
     assert uuid.UUID(response.scan_id).version == 4
@@ -237,7 +253,7 @@ async def test_payload_maps_the_four_request_fields_one_to_one():
     service = ScanService(uow_factory=factory)
     request = build_request(phpsessid="otra-sesion-de-prueba", sqlmap_level=3, sqlmap_risk=2)
 
-    await service.start_scan(request)
+    await service.start_scan(request, TEST_USER_EMAIL)
 
     payload = factory.created[0].n8n.received_payloads[0]
     assert payload.target_url == str(request.target_url)
@@ -253,7 +269,7 @@ async def test_payload_target_url_is_the_stringified_request_url_not_the_raw_lit
     raw_literal = "https://objetivo.test.local"
     request = build_request(target_url=raw_literal)
 
-    await service.start_scan(request)
+    await service.start_scan(request, TEST_USER_EMAIL)
 
     payload = factory.created[0].n8n.received_payloads[0]
     assert isinstance(payload.target_url, str)
@@ -268,7 +284,7 @@ async def test_payload_carries_defaults_and_normalizations_applied_by_validation
     request = ScanRequest(target_url=TEST_TARGET_URL, phpsessid="  sesion-con-espacios  ")
     assert request.phpsessid == "sesion-con-espacios"  # normalización ya aplicada por Pydantic
 
-    await service.start_scan(request)
+    await service.start_scan(request, TEST_USER_EMAIL)
 
     payload = factory.created[0].n8n.received_payloads[0]
     assert payload.sqlmap_level == 1
@@ -276,7 +292,7 @@ async def test_payload_carries_defaults_and_normalizations_applied_by_validation
     assert payload.phpsessid == "sesion-con-espacios"
 
 
-async def test_payload_carries_exactly_the_five_contract_fields_even_with_unknown_input_fields():
+async def test_payload_carries_exactly_the_six_contract_fields_even_with_unknown_input_fields():
     factory = FakeUoWFactory()
     service = ScanService(uow_factory=factory)
     request = ScanRequest(
@@ -287,7 +303,7 @@ async def test_payload_carries_exactly_the_five_contract_fields_even_with_unknow
         campo_desconocido="valor-que-no-debe-viajar",
     )
 
-    await service.start_scan(request)
+    await service.start_scan(request, TEST_USER_EMAIL)
 
     payload = factory.created[0].n8n.received_payloads[0]
     assert set(payload.model_dump(mode="json").keys()) == {
@@ -296,6 +312,7 @@ async def test_payload_carries_exactly_the_five_contract_fields_even_with_unknow
         "sqlmap_level",
         "sqlmap_risk",
         "scan_id",
+        "email",
     }
 
 
@@ -303,7 +320,7 @@ async def test_a_successful_start_scan_delivers_exactly_once():
     factory = FakeUoWFactory()
     service = ScanService(uow_factory=factory)
 
-    await service.start_scan(build_request())
+    await service.start_scan(build_request(), TEST_USER_EMAIL)
 
     assert len(factory.created) == 1
     assert len(factory.created[0].n8n.received_payloads) == 1
@@ -313,11 +330,83 @@ async def test_two_successive_start_scans_open_two_distinct_scopes():
     factory = FakeUoWFactory()
     service = ScanService(uow_factory=factory)
 
-    await service.start_scan(build_request())
-    await service.start_scan(build_request())
+    await service.start_scan(build_request(), TEST_USER_EMAIL)
+    await service.start_scan(build_request(), TEST_USER_EMAIL)
 
     assert len(factory.created) == 2
     assert factory.created[0] is not factory.created[1]
+
+
+# --- `user_email`: obligatorio, intocado, y no filtra (CHANGE-23, 2.4/2.5) --
+
+
+async def test_two_distinct_emails_with_identical_requests_produce_distinct_recipients():
+    factory = FakeUoWFactory()
+    service = ScanService(uow_factory=factory)
+    request = build_request()
+
+    await service.start_scan(request, "primer-usuario@test.local")
+    await service.start_scan(request, "segundo-usuario@test.local")
+
+    first_payload = factory.created[0].n8n.received_payloads[0]
+    second_payload = factory.created[1].n8n.received_payloads[0]
+    assert first_payload.email == "primer-usuario@test.local"
+    assert second_payload.email == "segundo-usuario@test.local"
+    assert first_payload.email != second_payload.email
+
+
+async def test_start_scan_without_the_email_argument_raises_type_error():
+    # D-2: sin `= None` ni destinatario de respaldo -- un llamador que olvide
+    # el email deja de compilar/pasar, no continúa con un destinatario vacío
+    # ni fijo.
+    service = ScanService(uow_factory=FakeUoWFactory())
+
+    with pytest.raises(TypeError):
+        await service.start_scan(build_request())  # type: ignore[call-arg]
+
+
+async def test_an_email_field_on_the_raw_request_does_not_influence_the_payload_email():
+    # `ScanRequest` no declara un campo `email` (CHANGE-08), pero aunque uno
+    # se colara por otra vía, gana siempre el parámetro `user_email`, nunca
+    # un dato leído de la solicitud.
+    factory = FakeUoWFactory()
+    service = ScanService(uow_factory=factory)
+    request = ScanRequest(
+        target_url=TEST_TARGET_URL,
+        phpsessid=TEST_PHPSESSID,
+        email="atacante@example.com",
+    )
+
+    await service.start_scan(request, TEST_USER_EMAIL)
+
+    payload = factory.created[0].n8n.received_payloads[0]
+    assert payload.email == TEST_USER_EMAIL
+    assert payload.email != "atacante@example.com"
+
+
+async def test_email_does_not_appear_in_the_scan_response():
+    service = ScanService(uow_factory=FakeUoWFactory())
+
+    response = await service.start_scan(build_request(), TEST_USER_EMAIL)
+
+    assert TEST_USER_EMAIL not in response.scan_id
+    assert TEST_USER_EMAIL not in response.status
+    assert TEST_USER_EMAIL not in response.message
+    assert not hasattr(response, "email")
+
+
+async def test_email_does_not_appear_in_a_propagated_n8n_unavailable_error():
+    # 2.5 TRIANGULATE (seguridad) -- mismo espíritu que el test ya existente
+    # del `phpsessid`: el email no debe filtrarse en el mensaje de la
+    # excepción propagada.
+    n8n = FakeN8nRepository(fail_with=N8nUnavailableError("orquestador no disponible"))
+    service = ScanService(uow_factory=FakeUoWFactory(n8n))
+    secret_email = "correo-secreto-no-debe-filtrarse@test.local"
+
+    with pytest.raises(N8nUnavailableError) as excinfo:
+        await service.start_scan(build_request(), secret_email)
+
+    assert secret_email not in str(excinfo.value)
 
 
 # --- Confirmación devuelta y propagación del error (D-4, D-6) --------------
@@ -330,7 +419,7 @@ async def test_response_scan_id_is_identical_to_the_scan_id_captured_in_the_deli
     factory = FakeUoWFactory()
     service = ScanService(uow_factory=factory)
 
-    response = await service.start_scan(build_request())
+    response = await service.start_scan(build_request(), TEST_USER_EMAIL)
 
     delivered_payload = factory.created[0].n8n.received_payloads[0]
     assert response.scan_id == delivered_payload.scan_id
@@ -339,7 +428,7 @@ async def test_response_scan_id_is_identical_to_the_scan_id_captured_in_the_deli
 async def test_successful_response_declares_queued_status_with_the_imported_message_constant():
     service = ScanService(uow_factory=FakeUoWFactory())
 
-    response = await service.start_scan(build_request())
+    response = await service.start_scan(build_request(), TEST_USER_EMAIL)
 
     assert response.status == "queued"
     assert response.message == SCAN_QUEUED_MESSAGE
@@ -350,7 +439,7 @@ async def test_n8n_unavailable_error_reaches_the_caller_with_its_original_type()
     service = ScanService(uow_factory=FakeUoWFactory(n8n))
 
     with pytest.raises(N8nUnavailableError):
-        await service.start_scan(build_request())
+        await service.start_scan(build_request(), TEST_USER_EMAIL)
 
 
 async def test_no_confirmation_is_emitted_and_the_scope_closes_when_delivery_fails():
@@ -360,7 +449,7 @@ async def test_no_confirmation_is_emitted_and_the_scope_closes_when_delivery_fai
 
     response = None
     with pytest.raises(N8nUnavailableError):
-        response = await service.start_scan(build_request())
+        response = await service.start_scan(build_request(), TEST_USER_EMAIL)
 
     assert response is None
     assert factory.created[0].closed is True
@@ -371,7 +460,7 @@ async def test_propagated_exception_type_is_exactly_n8n_unavailable_error_not_a_
     service = ScanService(uow_factory=FakeUoWFactory(n8n))
 
     with pytest.raises(Exception) as excinfo:
-        await service.start_scan(build_request())
+        await service.start_scan(build_request(), TEST_USER_EMAIL)
 
     assert type(excinfo.value) is N8nUnavailableError
 
@@ -381,7 +470,7 @@ async def test_an_unrelated_exception_is_not_masked_as_n8n_unavailable_error():
     service = ScanService(uow_factory=FakeUoWFactory(n8n))
 
     with pytest.raises(ValueError):
-        await service.start_scan(build_request())
+        await service.start_scan(build_request(), TEST_USER_EMAIL)
 
 
 # --- Pureza de capa, independencia de framework y del entorno (D-10) -------
@@ -434,7 +523,7 @@ async def test_start_scan_works_without_instantiating_the_fastapi_application():
     # ningún momento: demuestra que la iniciación funciona sin la app levantada.
     service = ScanService(uow_factory=FakeUoWFactory())
 
-    response = await service.start_scan(build_request())
+    response = await service.start_scan(build_request(), TEST_USER_EMAIL)
 
     assert response.status == "queued"
 
@@ -454,7 +543,7 @@ async def test_successful_response_does_not_contain_the_phpsessid():
     service = ScanService(uow_factory=FakeUoWFactory())
     request = build_request(phpsessid="sessid-secreta-no-debe-filtrarse")
 
-    response = await service.start_scan(request)
+    response = await service.start_scan(request, TEST_USER_EMAIL)
 
     assert "sessid-secreta-no-debe-filtrarse" not in response.scan_id
     assert "sessid-secreta-no-debe-filtrarse" not in response.status
@@ -467,7 +556,7 @@ async def test_propagated_error_message_does_not_contain_the_phpsessid():
     request = build_request(phpsessid="sessid-secreta-no-debe-filtrarse")
 
     with pytest.raises(N8nUnavailableError) as excinfo:
-        await service.start_scan(request)
+        await service.start_scan(request, TEST_USER_EMAIL)
 
     assert "sessid-secreta-no-debe-filtrarse" not in str(excinfo.value)
 

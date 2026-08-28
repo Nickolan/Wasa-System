@@ -242,6 +242,27 @@ def test_scan_request_unknown_field_is_ignored_and_not_propagated():
     assert "acepta_terminos" not in request.model_dump()
 
 
+def test_scan_request_declares_no_email_field():
+    # 1.5 (CHANGE-23, D-1/RN-WS-16): `ScanRequest` NO declara ningún campo de
+    # email -- el cliente no puede fijar ni influir el destinatario del
+    # reporte. Ésta es una garantía a fijar por test, no una función a
+    # implementar: no se modifica `ScanRequest` para que este test pase.
+    assert "email" not in ScanRequest.model_fields
+
+
+def test_scan_request_discards_an_email_field_sent_by_the_client():
+    # 1.5: si el cliente igual manda un campo `email`, `extra="ignore"` lo
+    # descarta antes de llegar al Service -- no queda ni como atributo ni en
+    # `model_dump()`.
+    request = ScanRequest(
+        target_url="https://example.com/login.php",
+        phpsessid="a1b2c3",
+        email="atacante@example.com",
+    )
+    assert "email" not in request.model_dump()
+    assert not hasattr(request, "email")
+
+
 def test_scan_response_valid_with_queued_status():
     response = ScanResponse(
         scan_id="a3f1e9d2-1234-5678-9abc-def012345678",
@@ -288,19 +309,21 @@ def test_scan_response_missing_message_is_required_error():
     )
 
 
-def test_n8n_payload_valid_with_all_five_fields():
+def test_n8n_payload_valid_with_all_six_fields():
     payload = N8nPayload(
         target_url="https://example.com/login.php",
         phpsessid="a1b2c3",
         sqlmap_level=1,
         sqlmap_risk=1,
         scan_id="scan-1",
+        email="usuario@test.local",
     )
     assert payload.target_url == "https://example.com/login.php"
     assert payload.phpsessid == "a1b2c3"
     assert payload.sqlmap_level == 1
     assert payload.sqlmap_risk == 1
     assert payload.scan_id == "scan-1"
+    assert payload.email == "usuario@test.local"
 
 
 def test_n8n_payload_missing_scan_id_is_required_error():
@@ -310,6 +333,7 @@ def test_n8n_payload_missing_scan_id_is_required_error():
             phpsessid="a1b2c3",
             sqlmap_level=1,
             sqlmap_risk=1,
+            email="usuario@test.local",
         )
     errors = exc_info.value.errors()
     assert any(
@@ -317,23 +341,58 @@ def test_n8n_payload_missing_scan_id_is_required_error():
     )
 
 
-def test_n8n_payload_serializes_to_exactly_five_keys_with_plain_string_url():
+def test_n8n_payload_missing_email_is_required_error():
+    # 1.3(a) TRIANGULATE: omitir `email` produce un error de campo requerido,
+    # exactamente como omitir `scan_id`.
+    with pytest.raises(ValidationError) as exc_info:
+        N8nPayload(
+            target_url="https://example.com/login.php",
+            phpsessid="a1b2c3",
+            sqlmap_level=1,
+            sqlmap_risk=1,
+            scan_id="scan-1",
+        )
+    errors = exc_info.value.errors()
+    assert any(
+        error["loc"] == ("email",) and error["type"] == "missing" for error in errors
+    )
+
+
+def test_n8n_payload_serializes_to_exactly_six_keys_with_plain_string_url_and_email():
     payload = N8nPayload(
         target_url="https://example.com/login.php",
         phpsessid="a1b2c3",
         sqlmap_level=1,
         sqlmap_risk=1,
         scan_id="scan-1",
+        email="usuario@test.local",
     )
-    dumped = payload.model_dump()
+    dumped = payload.model_dump(mode="json")
     assert set(dumped.keys()) == {
         "target_url",
         "phpsessid",
         "sqlmap_level",
         "sqlmap_risk",
         "scan_id",
+        "email",
     }
     assert isinstance(dumped["target_url"], str)
+    assert isinstance(dumped["email"], str)
+
+
+def test_n8n_payload_email_travels_unchanged_without_normalization():
+    # 1.3(c) TRIANGULATE: ni se recorta, ni se pasa a minúsculas, ni se
+    # transforma de ninguna otra forma -- viaja tal cual llega.
+    raw_email = "  Usuario.CON-Mayusculas+tag@Test.Local  "
+    payload = N8nPayload(
+        target_url="https://example.com/login.php",
+        phpsessid="a1b2c3",
+        sqlmap_level=1,
+        sqlmap_risk=1,
+        scan_id="scan-1",
+        email=raw_email,
+    )
+    assert payload.email == raw_email
 
 
 def test_n8n_payload_is_compatible_with_a_validated_scan_request():
@@ -346,8 +405,10 @@ def test_n8n_payload_is_compatible_with_a_validated_scan_request():
         sqlmap_level=request.sqlmap_level,
         sqlmap_risk=request.sqlmap_risk,
         scan_id="scan-generado-por-el-bridge",
+        email="usuario@test.local",
     )
     assert payload.target_url == str(request.target_url)
     assert payload.phpsessid == "a1b2c3"
     assert payload.sqlmap_level == 1
     assert payload.sqlmap_risk == 1
+    assert payload.email == "usuario@test.local"

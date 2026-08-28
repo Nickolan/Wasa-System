@@ -72,6 +72,10 @@ Solo visible con JWT válido en authStore.
 ### HU-04-02 — Inyectar variables del webhook en el workflow
 **CA**: `$json.target_url`/`phpsessid` disponibles en ZAP/Nuclei/ffuf; `$json.sqlmap_level`/`sqlmap_risk` en LPUSH Redis; `$json.scan_id` en INSERT de `scans`.
 
+### HU-04-03 — Enviar el reporte al email del usuario que inició el escaneo *(nueva — CHANGE-23)*
+**Como** Usuario Evaluador autenticado **quiero** recibir el reporte de mi escaneo en mi propio email **para** no depender de revisar el Dashboard para enterarme de los hallazgos.
+**Reglas**: RN-WS-16. **CA**: el Bridge agrega el email del usuario autenticado (JWT, no un campo del formulario) al `N8nPayload` que reenvía a n8n; el nodo `Send email` del workflow usa ese email como `toEmail` en vez del valor fijo hardcodeado; un usuario que solo envía `target_url`/`phpsessid`/`sqlmap_level`/`sqlmap_risk` (sin campo de email posible) sigue recibiendo el reporte en la casilla con la que se registró.
+
 ## Épica 5: Redirección — Navegación al Dashboard
 
 ### HU-05-01 — Redirección automática al Dashboard

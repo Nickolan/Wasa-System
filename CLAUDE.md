@@ -28,8 +28,8 @@ La fuente de verdad del dominio vive en `knowledge-base/`. **Leé el archivo rel
 | [01_vision_y_objetivos.md](knowledge-base/01_vision_y_objetivos.md) | Entender propósito, alcance v1.2 y fuera de alcance |
 | [03_actores_y_roles.md](knowledge-base/03_actores_y_roles.md) | Auth, RBAC (autenticado vs. anónimo), rutas públicas |
 | [04_modelo_de_datos.md](knowledge-base/04_modelo_de_datos.md) | Entidad `users` (nueva) + `scans`/`vulnerabilities` (existentes) en PostgreSQL `db_fuzzing` |
-| [05_reglas_de_negocio.md](knowledge-base/05_reglas_de_negocio.md) | Reglas codificadas RN-WS-01..15 |
-| [06_funcionalidades.md](knowledge-base/06_funcionalidades.md) | 6 épicas, 24 historias de usuario (HU-EE-NN) |
+| [05_reglas_de_negocio.md](knowledge-base/05_reglas_de_negocio.md) | Reglas codificadas RN-WS-01..16 |
+| [06_funcionalidades.md](knowledge-base/06_funcionalidades.md) | 6 épicas, 27 historias de usuario (HU-EE-NN, incl. HU-04-03 de CHANGE-23) |
 | [07_flujos_principales.md](knowledge-base/07_flujos_principales.md) | Flujos E2E: registro, login, escaneo |
 | [08_arquitectura_propuesta.md](knowledge-base/08_arquitectura_propuesta.md) | Patrones, estructura de directorios, seguridad, variables de entorno |
 | [10_preguntas_abiertas.md](knowledge-base/10_preguntas_abiertas.md) | ⚠️ Inconsistencias/preguntas a resolver ANTES de codear |

@@ -14,7 +14,7 @@ captura excepciones, no valida nada a mano.
 from fastapi import APIRouter, Depends, Request
 from starlette.responses import JSONResponse
 
-from fastapi_bridge.core.dependencies import get_current_user, get_scan_service
+from fastapi_bridge.core.dependencies import CurrentUserEmail, get_scan_service
 from fastapi_bridge.core.limiter import scan_rate_limit
 from fastapi_bridge.schemas.scan_schemas import ScanRequest, ScanResponse
 from fastapi_bridge.services.scan_service import ScanService
@@ -27,8 +27,8 @@ router = APIRouter(prefix="/api/v1/scan", tags=["scan"])
 async def start_scan(
     request: Request,
     scan_request: ScanRequest,
-    current_user: str = Depends(get_current_user),
+    current_user: CurrentUserEmail,
     service: ScanService = Depends(get_scan_service),
 ) -> JSONResponse:
-    response = await service.start_scan(scan_request)
+    response = await service.start_scan(scan_request, current_user)
     return JSONResponse(status_code=202, content=response.model_dump(mode="json"))

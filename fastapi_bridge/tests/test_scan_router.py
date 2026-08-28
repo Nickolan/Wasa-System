@@ -53,13 +53,15 @@ class FakeScanService:
         fail_with: Exception | None = None,
     ) -> None:
         self.received_requests: list[ScanRequest] = []
+        self.received_emails: list[str] = []
         self._response = response or ScanResponse(
             scan_id="fixed-scan-id", status="queued", message="Escaneo encolado correctamente."
         )
         self._fail_with = fail_with
 
-    async def start_scan(self, request: ScanRequest) -> ScanResponse:
+    async def start_scan(self, request: ScanRequest, user_email: str) -> ScanResponse:
         self.received_requests.append(request)
+        self.received_emails.append(user_email)
         if self._fail_with is not None:
             raise self._fail_with
         return self._response
@@ -97,6 +99,34 @@ def token_with_secret(secret: str, email: str = "scan-user@test.com") -> str:
     return create_access_token({"sub": email}, timedelta(hours=24), other_settings)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_scan_quota():
+    """Aísla el cupo de rate limit de CADA test de este módulo.
+
+    `fastapi_bridge.core.limiter.limiter` es un singleton de módulo con
+    almacenamiento en memoria compartido por toda la sesión de pytest, y
+    `POST /api/v1/scan/start` es la única ruta de producción decorada con él.
+    Sin este reset, todos los tests que usan el `client_host` por defecto de
+    `build_client` (`10.0.0.9`) comparten un único cupo de
+    `RATE_LIMIT_REQUESTS` (10 por defecto) y lo consumen acumulativamente a
+    lo largo del módulo: la suite quedaba exactamente en 10/10 antes de la
+    sección 9, es decir con cero margen — el siguiente test que alcanzara el
+    handler desde ese host habría fallado con un `429` desconcertante en vez
+    del `202`/`502` esperado (fallo ya observado durante el apply de
+    CHANGE-23). El reset por test elimina esa dependencia de orden.
+
+    No debilita la cobertura de rate limiting: la sección 9 ejercita el cupo
+    dentro de un mismo test, con su propia `Settings` y su propio
+    `client_host`, y `reset()` sólo limpia el almacenamiento — no toca
+    `limiter._dynamic_route_limits`, que es lo que verifica 9.7.
+    """
+    from fastapi_bridge.core.limiter import limiter
+
+    limiter.reset()
+    yield
+    limiter.reset()
+
+
 @pytest.fixture
 def app_with_overrides():
     """3.4: construye la app de producción y sustituye `get_current_user` por
@@ -123,9 +153,10 @@ async def test_fake_scan_service_registers_the_received_request() -> None:
     fake = FakeScanService()
     request = build_request()
 
-    response = await fake.start_scan(request)
+    response = await fake.start_scan(request, "scan-user@test.com")
 
     assert fake.received_requests == [request]
+    assert fake.received_emails == ["scan-user@test.com"]
     assert response.scan_id == "fixed-scan-id"
 
 
@@ -134,7 +165,7 @@ async def test_fake_scan_service_raises_when_configured_to_fail() -> None:
     fake = FakeScanService(fail_with=N8nUnavailableError("orquestador no disponible"))
 
     with pytest.raises(N8nUnavailableError):
-        await fake.start_scan(build_request())
+        await fake.start_scan(build_request(), "scan-user@test.com")
 
     assert fake.received_requests == [build_request()]
 
@@ -220,6 +251,111 @@ async def test_scan_domain_exposes_no_other_route() -> None:
 # ---------------------------------------------------------------------------
 # 5. Delegación al Service y respuesta 202
 # ---------------------------------------------------------------------------
+
+
+async def test_service_receives_the_authenticated_user_email() -> None:
+    """3.1 RED (CHANGE-23, D-1/D-5): el router reenvía al Service el email que
+    resolvió `get_current_user`, en vez de descartarlo."""
+    from fastapi_bridge.core.dependencies import get_scan_service
+
+    fake_service = FakeScanService()
+    app = create_app()
+    app.dependency_overrides[get_current_user] = lambda: "scan-user@test.com"
+    app.dependency_overrides[get_scan_service] = lambda: fake_service
+
+    # client_host propio (D-5, test_rate_limit.py): el cupo por IP es
+    # compartido por todos los tests de este módulo que usan el host por
+    # defecto de `build_client` -- un host aislado evita agotarlo.
+    async with await build_client(app, client_host="10.0.0.42") as client:
+        response = await client.post(SCAN_START_PATH, json=valid_body())
+
+    assert response.status_code == 202
+    assert fake_service.received_emails == ["scan-user@test.com"]
+
+
+async def test_two_distinct_current_user_overrides_reach_the_service_with_distinct_emails() -> None:
+    """3.4(a) TRIANGULATE: dos overrides distintos de `get_current_user` con
+    cuerpos idénticos producen dos invocaciones del Service con emails
+    distintos."""
+    from fastapi_bridge.core.dependencies import get_scan_service
+
+    fake_service = FakeScanService()
+    app = create_app()
+    app.dependency_overrides[get_scan_service] = lambda: fake_service
+
+    app.dependency_overrides[get_current_user] = lambda: "primer-usuario@test.com"
+    async with await build_client(app, client_host="10.0.0.43") as client:
+        await client.post(SCAN_START_PATH, json=valid_body())
+
+    app.dependency_overrides[get_current_user] = lambda: "segundo-usuario@test.com"
+    async with await build_client(app, client_host="10.0.0.44") as client:
+        await client.post(SCAN_START_PATH, json=valid_body())
+
+    assert fake_service.received_emails == ["primer-usuario@test.com", "segundo-usuario@test.com"]
+
+
+async def test_an_email_field_in_the_request_body_does_not_reach_the_service_as_the_recipient() -> None:
+    """3.4(b) TRIANGULATE: un cuerpo que incluye un campo `email` con
+    apariencia de destinatario llega al Service con el email del JWT -- el
+    valor del atacante no aparece en ningún lado."""
+    from fastapi_bridge.core.dependencies import get_scan_service
+
+    fake_service = FakeScanService()
+    app = create_app()
+    app.dependency_overrides[get_current_user] = lambda: "scan-user@test.com"
+    app.dependency_overrides[get_scan_service] = lambda: fake_service
+
+    body = valid_body(email="atacante@example.com")
+    async with await build_client(app, client_host="10.0.0.45") as client:
+        response = await client.post(SCAN_START_PATH, json=body)
+
+    assert response.status_code == 202
+    assert fake_service.received_emails == ["scan-user@test.com"]
+    assert "atacante@example.com" not in response.text
+    # El valor del atacante tampoco llega al Service por la vía de la
+    # `ScanRequest`: `extra="ignore"` (CHANGE-08, D-7) lo descarta en la
+    # validación, así que la solicitud entregada no lo lleva ni como
+    # atributo ni en su `model_dump()`.
+    received = fake_service.received_requests[0]
+    assert not hasattr(received, "email")
+    assert "atacante@example.com" not in str(received.model_dump())
+
+
+async def test_email_never_appears_in_any_response_body() -> None:
+    """3.5 TRIANGULATE (no filtración): el email no aparece en el cuerpo
+    `202` de aceptación, ni en el `502` RFC 7807 de orquestador no
+    disponible, ni en el `422` de validación -- mismo espíritu que
+    `test_phpsessid_never_appears_in_any_error_body` (7.5)."""
+    secret_email = "correo-secreto-no-debe-filtrarse@test.local"
+
+    accepted_app, accepted_service = _app_with_fake_service()
+    accepted_app.dependency_overrides[get_current_user] = lambda: secret_email
+    async with await build_client(accepted_app, client_host="10.0.0.46") as client:
+        accepted_response = await client.post(SCAN_START_PATH, json=valid_body())
+    assert accepted_response.status_code == 202
+    assert secret_email not in accepted_response.text
+
+    invalid_body_app, _fs = _app_with_fake_service()
+    invalid_body_app.dependency_overrides[get_current_user] = lambda: secret_email
+    async with await build_client(invalid_body_app, client_host="10.0.0.47") as client:
+        invalid_body_response = await client.post(
+            SCAN_START_PATH, json={"phpsessid": "sessid-de-prueba"}
+        )
+    assert invalid_body_response.status_code in (400, 422)
+    assert secret_email not in invalid_body_response.text
+
+    failing_service = FakeScanService(
+        fail_with=N8nUnavailableError("el orquestador no respondió a tiempo")
+    )
+    from fastapi_bridge.core.dependencies import get_scan_service
+
+    failing_app = create_app()
+    failing_app.dependency_overrides[get_current_user] = lambda: secret_email
+    failing_app.dependency_overrides[get_scan_service] = lambda: failing_service
+    async with await build_client(failing_app, client_host="10.0.0.48") as client:
+        failing_response = await client.post(SCAN_START_PATH, json=valid_body())
+    assert failing_response.status_code == 502
+    assert secret_email not in failing_response.text
 
 
 async def test_valid_request_with_substituted_dependencies_is_accepted() -> None:

@@ -192,6 +192,14 @@
       "sessions": 0,
       "memories": 3,
       "prompts": 0
+    },
+    {
+      "id": "c3d0b102",
+      "created_by": "Lauti Ferreria",
+      "created_at": "2026-08-28T16:03:06Z",
+      "sessions": 0,
+      "memories": 5,
+      "prompts": 0
     }
   ]
 }
