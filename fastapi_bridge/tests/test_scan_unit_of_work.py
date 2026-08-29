@@ -47,13 +47,14 @@ def build_settings(
 
 
 def build_payload(**overrides: object) -> N8nPayload:
-    """`N8nPayload` de prueba con los cinco campos del contrato (CHANGE-08)."""
+    """`N8nPayload` de prueba con los seis campos del contrato (CHANGE-08/CHANGE-23)."""
     fields: dict[str, object] = {
         "target_url": "https://objetivo.test.local/login",
         "phpsessid": "sessid-de-prueba",
         "sqlmap_level": 1,
         "sqlmap_risk": 1,
         "scan_id": "scan-de-prueba-001",
+        "email": "usuario-de-prueba@test.local",
     }
     fields.update(overrides)
     return N8nPayload(**fields)
@@ -324,6 +325,7 @@ async def test_scope_does_not_alter_the_delivered_message_payload():
         "sqlmap_level",
         "sqlmap_risk",
         "scan_id",
+        "email",
     }
     assert body == payload.model_dump(mode="json")
 

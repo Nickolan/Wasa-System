@@ -75,9 +75,15 @@ CHANGE-00b (react-landing-scaffold)
     │                       └── CHANGE-20 (landing-page-composition) ─ depende de 19
     │
     ├── CHANGE-21 (n8n-webhook-trigger) ──── depende de 12
+    │       │
+    │       └── CHANGE-23 (scan-report-user-email) ── depende de 08, 11, 12, 21
     │
     └── CHANGE-22 (e2e-smoke-test) ─── depende de 12, 20, 21
 ```
+
+> `CHANGE-23` es una adición posterior a los 22 changes originales (no forma parte de la
+> traducción 1:1 de `docs_wasa_sdd/CHANGES.md` — ver nota en §Trazabilidad al final de este
+> archivo). No es dependencia de `CHANGE-22`.
 
 ### Paralelismo por fase
 
@@ -129,6 +135,7 @@ GATE 7: CHANGE-12 ✓
 
 GATE 8: CHANGE-12 ✓, CHANGE-20 ✓, CHANGE-21 ✓        ← CIERRE
   → CHANGE-22 e2e-smoke-test                        [Agente A/B/C — validación conjunta]
+  → CHANGE-23 scan-report-user-email                [Agente B — independiente de CHANGE-22]
 ```
 
 Nota: `CHANGE-05` (auth-router) no es una dependencia estructural de `CHANGE-12`, pero
@@ -1125,6 +1132,74 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 
 ---
 
+### [CHANGE-23] `scan-report-user-email`
+- **Estado**: `[x]` archivado (2026-08-28) — apply ejecutado y verificado automáticamente, auditoría adversarial post-apply completada (6.1-6.6), specs delta sincronizados sin duplicados. Los 6 criterios de aceptación verificados: 5 por test automático, 1 (`Send email` en n8n) por inspección directa del JSON. `pytest -q`: 632 passed, 1 skipped (baseline previo: 618 passed, 1 skipped; sin regresiones), estable en 3 corridas. `Herramientas/Flujo_Fuzzing_N8N.json` editado en el repo (nodos `URL Ejemplo` y `Send email`) — el usuario debe importarlo en su instancia real de n8n y definir `WASA_NOTIFICATION_EMAIL=lautiferreria@gmail.com` (tarea 4.6, fuera del alcance del apply local — responsabilidad del usuario, no gap de implementación). Pendiente de ejecución manual por el usuario: re-ejercitar el criterio "POST a /scan/start con JWT válido" de CHANGE-22 contra infraestructura viva y confirmar recepción del reporte en la casilla de prueba (tarea 5.3 — requiere n8n vivo + JSON importado + casilla real, fuera del alcance de este `apply`).
+- **Archivado en**: `openspec/changes/archive/2026-08-28-change-23-scan-report-user-email/`, tras ciclo completo propose → apply → auditoría adversarial → archive con autorización explícita del usuario. Specs delta (`scan-payload-contract`, `scan-initiation`, `scan-endpoint`, `orchestrator-scan-webhook`) fusionados a los specs principales en `openspec/specs/` sin duplicados; `openspec validate --strict` pasa en los tres primeros, el cuarto (`orchestrator-scan-webhook`) mantiene una falla preexistente de formato (falta sección `## Purpose`, heredada de cómo CHANGE-22 creó ese spec) no relacionada con este change y compartida con otros 4 specs del repo.
+- **Historias US**: HU-04-03 (nueva)
+- **Scope**:
+  - `fastapi_bridge/schemas/scan_schemas.py`: `N8nPayload` agrega el campo `email: str` —
+    el email del usuario autenticado que inició el escaneo, no un campo que exponga
+    `ScanRequest` (el cliente no debe poder elegir el destino del reporte).
+  - `fastapi_bridge/services/scan_service.py`: `ScanService.start_scan` pasa a recibir un
+    segundo parámetro con el email del usuario autenticado (p. ej.
+    `start_scan(self, request: ScanRequest, user_email: str) -> ScanResponse`) y lo
+    incluye al componer el `N8nPayload`.
+  - `fastapi_bridge/api/v1/scan/router.py`: el handler `start_scan` ya resuelve
+    `current_user: str = Depends(get_current_user)` (CHANGE-06/CHANGE-12) pero hoy no lo
+    reenvía al Service — pasa a llamar `service.start_scan(scan_request, current_user)`.
+  - `Herramientas/Flujo_Fuzzing_N8N.json` (workflow n8n, mismo archivo tocado por
+    CHANGE-21):
+    - Nodo `URL Ejemplo`: agrega `email: webhookPayload.email` al objeto que arma la
+      rama disparada por Webhook; la rama Manual/Schedule (sin webhook, usada en las
+      corridas de prueba documentadas en la tesis) usa un fallback por variable de
+      entorno (p. ej. `WASA_NOTIFICATION_EMAIL`), igual que ya hace con
+      `ZAP_API_KEY`/`WASA_PHPSESSID`.
+    - Nodo `Send email`: el campo `toEmail` deja de ser el literal fijo
+      (`tu-correo@example.com`) y pasa a `={{ $('URL Ejemplo').first().json.email }}`,
+      siguiendo el mismo patrón de referencia que ya usa `Reporte Final` para leer
+      `flowStartTime` del mismo nodo.
+- **Dependencias**: CHANGE-08, CHANGE-11, CHANGE-12, CHANGE-21 (las cuatro ya archivadas)
+- **Duración estimada**: 1.5 horas
+- **Governance**: MEDIO (dominio scan, no Auth core — pero la fuente del email es una
+  decisión no obvia a surfacear antes del apply: JWT del backend, nunca un campo
+  provisto por el cliente)
+- **Leer antes**:
+  - `knowledge-base/07_flujos_principales.md` §Flujo 3: Escaneo
+  - `knowledge-base/05_reglas_de_negocio.md` §RN-WS-07, RN-WS-16 (nueva)
+  - `knowledge-base/09_decisiones_y_supuestos.md` §DD-05 (nueva)
+  - `knowledge-base/08_arquitectura_propuesta.md` §Seguridad
+- **Criterios de Aceptación**:
+  - [x] `N8nPayload` incluye `email` y serializa correctamente a JSON. — automático
+    (`test_scan_schemas.py::test_n8n_payload_valid_with_all_six_fields`,
+    `test_n8n_payload_missing_email_is_required_error`,
+    `test_n8n_payload_serializes_to_exactly_six_keys_with_plain_string_url_and_email`).
+  - [x] `ScanService.start_scan` compone el `N8nPayload` con el email del usuario
+    autenticado recibido por parámetro, no con un valor tomado de `ScanRequest`. — automático
+    (`test_scan_service.py::test_start_scan_forwards_the_caller_supplied_email_to_the_payload`,
+    `test_an_email_field_on_the_raw_request_does_not_influence_the_payload_email`).
+  - [x] `ScanRouter` reenvía `current_user` (ya resuelto por `get_current_user`) al Service
+    — hoy se resuelve y se descarta. — automático
+    (`test_scan_router.py::test_service_receives_the_authenticated_user_email`).
+  - [x] Con n8n mockeado: el body del POST recibido en el webhook incluye `email` con el
+    valor del usuario autenticado que disparó el escaneo. — automático, verificado por capas (D-9)
+    (`test_n8n_repository.py::test_forward_scan_body_has_exactly_the_six_contract_keys_as_json`
+    + los dos tests de arriba, que juntos cubren JWT → Router → Service → Payload → cuerpo HTTP).
+  - [x] En el workflow n8n: el nodo `Send email` usa el email dinámico propagado desde el
+    Webhook, no el valor hardcodeado `tu-correo@example.com`. — inspección manual del JSON
+    (`toEmail` pasó a `={{ $('URL Ejemplo').first().json.email }}`; confirmado por `git diff` y
+    por `json.load` para validez del archivo). No verificable por test automático: no hay
+    runtime de n8n en este `apply`.
+  - [x] `ScanRequest` no expone ningún campo de email — un cliente no puede redirigir el
+    reporte a una dirección de su elección. — automático
+    (`test_scan_schemas.py::test_scan_request_declares_no_email_field`,
+    `test_scan_request_discards_an_email_field_sent_by_the_client`).
+- **Nota**: no es dependencia de CHANGE-22 (`e2e-smoke-test`) ni lo bloquea; se recomienda
+  re-ejercitar manualmente el criterio "POST a /scan/start con JWT válido" de CHANGE-22
+  después de este change para confirmar que el mail de reporte llega a la casilla del
+  usuario de prueba, sin reabrir ni modificar los criterios ya registrados de CHANGE-22.
+
+---
+
 ## Estimación Total de Duración
 
 | Change          | Duración estimada |
@@ -1155,7 +1230,8 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 | CHANGE-20       | 1 hora              |
 | CHANGE-21       | 1.5 horas           |
 | CHANGE-22       | 2 horas             |
-| **TOTAL**       | **~34 horas**       |
+| CHANGE-23       | 1.5 horas           |
+| **TOTAL**       | **~35.5 horas**     |
 
 ## Sprints Sugeridos (agrupación alternativa, secuencial — ver también los GATEs de paralelismo arriba)
 
@@ -1189,6 +1265,13 @@ CHANGE-17 → CHANGE-18 → CHANGE-19 → CHANGE-20
 CHANGE-21 → CHANGE-22
 ```
 
+### Sprint 7 — Reporte al email del usuario (1.5h)
+```
+CHANGE-23
+```
+No forma parte de los 6 sprints originales del roadmap traducido — ver nota en
+§Trazabilidad con la fuente original.
+
 ---
 
 ## Ya realizado (archivado)
@@ -1209,3 +1292,13 @@ aceptación) de [`docs_wasa_sdd/CHANGES.md`](docs_wasa_sdd/CHANGES.md) v1.2 al f
 `roadmap-generator`. Para el detalle narrativo de historias de usuario ver
 `docs_wasa_sdd/HISTORIAS_DE_USUARIO.txt`; para el documento integrador completo, ver
 `docs_wasa_sdd/INTEGRADOR.txt`.
+
+**Excepción — CHANGE-23**: a diferencia de CHANGE-00a..CHANGE-22, `CHANGE-23`
+(`scan-report-user-email`) NO tiene equivalente en `docs_wasa_sdd/CHANGES.md` ni en
+`HISTORIAS_DE_USUARIO.txt` — es una historia nueva (HU-04-03) agregada tras completar el
+roadmap original, a pedido explícito del usuario (2026-08-28): que el reporte de
+vulnerabilidades generado por n8n se envíe al email propio del usuario autenticado que
+disparó el escaneo, en vez de a la dirección fija que hoy tiene hardcodeada el nodo
+`Send email` del workflow. Documentado en `knowledge-base/05_reglas_de_negocio.md`
+(RN-WS-16), `knowledge-base/06_funcionalidades.md` (HU-04-03) y
+`knowledge-base/09_decisiones_y_supuestos.md` (DD-05).

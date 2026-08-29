@@ -46,6 +46,8 @@ fastapi_bridge/
 ├── schemas/
 │   ├── auth_schemas.py           — UserRegister, UserLogin, TokenResponse, TokenData
 │   └── scan_schemas.py           — ScanRequest, ScanResponse, N8nPayload, ErrorDetail
+│                                    (N8nPayload incluye `email` del usuario autenticado
+│                                    desde CHANGE-23 — nunca expuesto en ScanRequest)
 └── exceptions/
     └── handlers.py               — RFC 7807 global handlers
 
@@ -72,6 +74,7 @@ wasa-landing/ (React FSD)
 - Rate limiting: slowapi, 10 req/IP/60min sobre `/scan/start` únicamente (los endpoints de auth no están sujetos a este límite).
 - CORS: solo orígenes listados en `CORS_ORIGINS`.
 - Errores en producción: nunca exponen stack traces; siempre RFC 7807.
+- Destino del reporte de escaneo (CHANGE-23): el email al que n8n envía el reporte de vulnerabilidades se toma exclusivamente del JWT del usuario autenticado (`get_current_user`), nunca de un campo de `ScanRequest` — evita que un usuario autenticado pueda redirigir un reporte de hallazgos de seguridad a un tercero.
 
 ## Variables de entorno
 

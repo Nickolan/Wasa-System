@@ -10,12 +10,13 @@ Cada regla tiene un código único `RN-WS-{NN}` (tal como está codificado en `d
 - **RN-WS-04**: `sqlmap_level` debe ser entero entre 1 y 5. Valor por defecto: 1. — HU-02-04, HU-03-02
 - **RN-WS-05**: `sqlmap_risk` debe ser entero entre 1 y 3. Valor por defecto: 1. — HU-02-04, HU-03-02
 
-## Dominio: FastAPI Bridge / API (RN-WS-06, 07, 09, 11)
+## Dominio: FastAPI Bridge / API (RN-WS-06, 07, 09, 11, 16)
 
 - **RN-WS-06**: El Bridge aplica rate limiting de 10 solicitudes por IP por ventana de 60 minutos sobre `/scan/start`. Excedentes reciben 429 Too Many Requests. — HU-03-03
 - **RN-WS-07**: El Bridge NO ejecuta herramientas de seguridad directamente. Solo valida y delega al webhook de n8n (fire-and-forward). — HU-03-03
 - **RN-WS-09**: Los errores del Bridge deben seguir el formato RFC 7807 (Problem Details for HTTP APIs). — HU-03-04
 - **RN-WS-11**: `POST /api/v1/scan/start` requiere un JWT válido en el header `Authorization` (Bearer token). Sin él: 401 Unauthorized. — HU-06-04, HU-03-02
+- **RN-WS-16** *(nueva — CHANGE-23)*: El reporte de vulnerabilidades que emite n8n al finalizar un escaneo se envía exclusivamente al email del usuario autenticado que lo inició, extraído del JWT (`get_current_user`). `ScanRequest` NO expone ningún campo de email — el cliente nunca puede elegir ni sobrescribir el destinatario del reporte. — HU-04-03
 
 ## Dominio: Autenticación (RN-WS-12, 13, 14, 15)
 

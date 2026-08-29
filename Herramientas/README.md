@@ -47,6 +47,80 @@ Descargá y configurá las herramientas en tu directorio de trabajo (ej: `C:\Her
 
 ---
 
+## 🔧 Configuración de Variables de Entorno (n8n)
+
+Antes de ejecutar el flujo por primera vez, es necesario definir un conjunto de variables de entorno que n8n leerá en tiempo de ejecución. Los nodos de código del flujo están escritos para **leer estas variables si existen** y, en caso contrario, recurrir a un valor por defecto. Configurarlas evita tener que editar el código de los nodos y mantiene fuera del flujo cualquier dato sensible (claves de API, identificadores de sesión, correo de notificación).
+
+> **Importante:** el archivo `Flujo_Fuzzing_N8N.json` publicado en este repositorio está despersonalizado. Las claves, el identificador de sesión y el correo aparecen como marcadores (`REEMPLAZAR_CON_TU_...`) o valores de ejemplo. Estas variables son el mecanismo previsto para inyectar los valores reales sin modificar el flujo.
+
+### Cómo definir las variables
+
+n8n expone en los nodos de código únicamente las variables de entorno cuyo nombre comienza con el prefijo `WASA_`, junto con las variables de sistema. Para el resto (por ejemplo `NUCLEI_PATH`), definí el prefijo permitido antes de iniciar n8n.
+
+En PowerShell (Windows 11), en la **misma terminal** desde la que vas a iniciar n8n:
+
+```powershell
+# Permitir que los nodos de código accedan a las variables de entorno
+$env:N8N_BLOCK_ENV_ACCESS_IN_NODE = "false"
+
+# Rutas de las herramientas (ajustá a tu instalación en C:\Herramientas\)
+$env:NUCLEI_PATH      = "C:\Herramientas\nuclei.exe"
+$env:NUCLEI_TEMPLATES = "C:\Herramientas\nuclei-templates"
+$env:FFUF_PATH        = "C:\Herramientas\ffuf.exe"
+$env:FFUF_WORDLIST    = "C:\Herramientas\wordlists\common.txt"
+
+# Directorios de salida
+$env:WASA_TOOLS_DIR   = "C:\Herramientas\resultados"
+$env:WASA_REPORTS_DIR = "C:\Herramientas\reportes"
+
+# Conexión y credenciales de OWASP ZAP
+$env:ZAP_URL          = "http://localhost:8090"
+$env:ZAP_API_KEY      = "TU_API_KEY_DE_ZAP"
+
+# Parámetros del objetivo de laboratorio y notificación
+$env:WASA_TARGET_URL       = "http://localhost:8081/"
+$env:WASA_PHPSESSID        = "TU_PHPSESSID_DE_DVWA"
+$env:WASA_NOTIFICATION_EMAIL = "tu-correo@tudominio.com"
+
+# Iniciar n8n en la misma sesión
+npx n8n
+```
+
+Para que las variables persistan entre reinicios sin volver a exportarlas, podés definirlas a nivel de usuario con `setx` (requiere reabrir la terminal) o mediante un archivo `.env` cargado por n8n.
+
+### Referencia de variables
+
+| Variable | Usada en | Valor por defecto | Descripción |
+| --- | --- | --- | --- |
+| `NUCLEI_PATH` | Nuclei Scann | `nuclei` | Ruta al ejecutable de Nuclei. Requerido si no está en el `PATH`. |
+| `NUCLEI_TEMPLATES` | Nuclei Scann | `./nuclei-templates` | Ruta al repositorio de plantillas clonado. |
+| `FFUF_PATH` | ffuf | `ffuf` | Ruta al ejecutable de ffuf. Requerido si no está en el `PATH`. |
+| `FFUF_WORDLIST` | ffuf | `./wordlists/common.txt` | Diccionario para el fuzzing de rutas. |
+| `WASA_TOOLS_DIR` | ffuf, Nuclei Scann | `./resultados` | Directorio donde se escriben los JSON crudos de las herramientas. |
+| `WASA_REPORTS_DIR` | Reporte Final | `./reportes` | Directorio donde se guarda el reporte Markdown final. |
+| `ZAP_URL` | URL Ejemplo | `http://localhost:8090` | URL base de la API de OWASP ZAP. |
+| `ZAP_API_KEY` | URL Ejemplo | `REEMPLAZAR_CON_TU_ZAP_API_KEY` | **Sensible.** Clave de API de ZAP. |
+| `WASA_TARGET_URL` | URL Ejemplo | `http://localhost:8081/` | Objetivo por defecto para los disparos Schedule y manual. |
+| `WASA_PHPSESSID` | URL Ejemplo | `REEMPLAZAR_CON_TU_PHPSESSID` | **Sensible.** Cookie de sesión autenticada de DVWA. |
+| `WASA_NOTIFICATION_EMAIL` | URL Ejemplo | `tu-correo@example.com` | **Sensible.** Destinatario del reporte en disparos Schedule y manual. |
+
+Las variables de sistema `USERPROFILE`, `HOME`, `APPDATA` y `LOCALAPPDATA` también se leen dentro del nodo Nuclei Scann, pero Windows ya las provee y **no requieren configuración manual**.
+
+### Nota sobre el disparo por Webhook
+
+El flujo admite tres modos de disparo (Schedule, manual y Webhook), los tres convergen en el mismo nodo de inicialización. Cuando el ciclo se dispara por el nodo **Webhook** (POST a `/webhook/wasa-scan`, con autenticación por cabecera), los siguientes valores se toman del cuerpo de la petición y **tienen prioridad sobre las variables de entorno**:
+
+| Propiedad del body | Reemplaza a |
+| --- | --- |
+| `target_url` | `WASA_TARGET_URL` |
+| `phpsessid` | `WASA_PHPSESSID` |
+| `sqlmap_level` | nivel de SQLMap (por defecto 2) |
+| `sqlmap_risk` | riesgo de SQLMap (por defecto 1) |
+| `email` | `WASA_NOTIFICATION_EMAIL` |
+
+En los disparos por Schedule o manual, el body no existe y el flujo usa siempre los valores de las variables de entorno con nivel 2 / riesgo 1. La credencial de cabecera del Webhook debe crearse en n8n antes de activar el flujo; no se incluye en el archivo publicado.
+
+---
 ## 🐍 Configuración del Entorno de Python
 
 Para asegurar que el Worker funcione correctamente sin conflictos de dependencias, seguí estos pasos en `C:\Herramientas\`:

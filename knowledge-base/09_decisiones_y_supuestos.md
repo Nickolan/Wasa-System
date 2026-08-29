@@ -25,6 +25,13 @@
 **Decisión**: la Landing Page organiza su código en capas `app → pages → widgets → features → entities → shared` con dependencia unidireccional.
 **Justificación**: escalabilidad y separación clara entre lógica de negocio (features), tipos/validación (entities) y UI reutilizable (shared).
 
+### DD-05 — El email del reporte se toma del JWT, nunca de un campo del cliente (CHANGE-23)
+**Decisión**: el `N8nPayload` que el Bridge reenvía a n8n incluye el email del usuario autenticado que inició el escaneo (resuelto server-side por `get_current_user` a partir del JWT), y ese es el único email al que n8n puede enviar el reporte. `ScanRequest` no declara ni declarará un campo de email.
+**Contexto**: pedido explícito del usuario (2026-08-28) — hoy el nodo `Send email` del workflow n8n (`Herramientas/Flujo_Fuzzing_N8N.json`) tiene el destinatario (`toEmail`) hardcodeado a una dirección fija, la misma para todos los escaneos, sin importar quién los dispare.
+**Alternativas consideradas**: agregar un campo `email` (u otro tipo de destinatario) a `ScanRequest`, que el usuario complete o edite en el formulario de escaneo (descartada).
+**Justificación**: el email ya viaja autenticado en el JWT (mismo patrón que `scan_id`, que tampoco lo aporta el cliente — ver `07_flujos_principales.md` §Flujo 3); confiar en un campo del formulario para el destino de un reporte con hallazgos de seguridad permitiría que un usuario autenticado exfiltrara ese reporte a una casilla ajena.
+**Trade-offs aceptados**: el usuario no puede pedir que un escaneo puntual se reporte a una casilla distinta a la de su cuenta (p. ej. para compartirlo con un compañero) sin reenviarlo manualmente después de recibirlo.
+
 ## Supuestos inferidos
 
 ### SU-01 — El Webhook Trigger de n8n puede agregarse sin romper el workflow existente

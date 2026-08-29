@@ -37,8 +37,17 @@ class ScanService:
     def __init__(self, uow_factory: Callable[[], ScanUoW] = ScanUoW) -> None:
         self._uow_factory: Callable[[], ScanUoW] = uow_factory
 
-    async def start_scan(self, request: ScanRequest) -> ScanResponse:
+    async def start_scan(self, request: ScanRequest, user_email: str) -> ScanResponse:
         """Genera el `scan_id`, compone el `N8nPayload` y entrega el escaneo.
+
+        `user_email` (CHANGE-23, D-1/D-2) es el correo del usuario autenticado
+        que disparó el escaneo, aportado por el llamador (el Router, desde el
+        JWT) como dato separado de `request` — nunca de la `ScanRequest` en
+        sí. Es obligatorio y sin valor por defecto deliberadamente: un
+        llamador que se olvide de pasarlo deja de compilar/pasar, en vez de
+        que el reporte se envíe silenciosamente a un destinatario vacío o
+        fijo. El Service no lo valida, no lo normaliza ni lo sustituye: sólo
+        lo traslada al `N8nPayload`.
 
         No captura `N8nUnavailableError`: se deja propagar intacta hacia el
         llamador (D-6). El orden es deliberado — generar, componer y recién
@@ -52,6 +61,7 @@ class ScanService:
             sqlmap_level=request.sqlmap_level,
             sqlmap_risk=request.sqlmap_risk,
             scan_id=scan_id,
+            email=user_email,
         )
         async with self._uow_factory() as uow:
             await uow.n8n.forward_scan(payload)

@@ -45,6 +45,15 @@ class N8nPayload(BaseModel):
 
     `target_url` es `str`, no `HttpUrl` (D-5): se construye a partir de un
     `ScanRequest` ya validado y debe serializar a JSON plano sin transformar.
+
+    `email` es el correo del usuario autenticado que inició el escaneo
+    (RN-WS-16, D-1 de CHANGE-23): su única fuente es el JWT resuelto por
+    `get_current_user`, nunca la `ScanRequest` del cliente ni ningún campo
+    que el cliente pueda fijar. Se tipa `str`, no `EmailStr` (D-4 de
+    CHANGE-23): el valor ya fue validado como `EmailStr` en el registro y
+    viene firmado dentro del JWT; revalidarlo acá no agrega seguridad, sólo
+    un modo de falla nuevo (mismo criterio que `target_url` y que
+    `TokenData.email` en CHANGE-04).
     """
 
     target_url: str
@@ -52,3 +61,4 @@ class N8nPayload(BaseModel):
     sqlmap_level: int
     sqlmap_risk: int
     scan_id: str
+    email: str

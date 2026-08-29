@@ -32,13 +32,14 @@ TEST_WEBHOOK_TOKEN = "test-token-distintivo-nunca-real"
 
 
 def build_payload(**overrides: object) -> N8nPayload:
-    """`N8nPayload` de prueba con los cinco campos del contrato (CHANGE-08)."""
+    """`N8nPayload` de prueba con los seis campos del contrato (CHANGE-08/CHANGE-23)."""
     fields: dict[str, object] = {
         "target_url": "https://objetivo.test.local/login",
         "phpsessid": "sessid-de-prueba",
         "sqlmap_level": 1,
         "sqlmap_risk": 1,
         "scan_id": "scan-de-prueba-001",
+        "email": "usuario-de-prueba@test.local",
     }
     fields.update(overrides)
     return N8nPayload(**fields)
@@ -185,7 +186,7 @@ async def test_forward_scan_sends_the_unwrapped_token_never_the_secretstr_obfusc
     assert captured[0].headers["X-WASA-TOKEN"] != "**********"
 
 
-async def test_forward_scan_body_has_exactly_the_five_contract_keys_as_json():
+async def test_forward_scan_body_has_exactly_the_six_contract_keys_as_json():
     handler, captured = capturing_handler(200)
     payload = build_payload()
     repository = build_repository(handler)
@@ -200,6 +201,7 @@ async def test_forward_scan_body_has_exactly_the_five_contract_keys_as_json():
         "sqlmap_level",
         "sqlmap_risk",
         "scan_id",
+        "email",
     }
     assert body == payload.model_dump(mode="json")
     assert isinstance(body["target_url"], str)

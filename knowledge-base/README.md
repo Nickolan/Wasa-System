@@ -10,8 +10,8 @@ Base de conocimiento generada en modo *ingest* a partir de los documentos SDD ya
 | [02_descripcion_general.md](02_descripcion_general.md) | Stack tecnológico, arquitectura general (diagrama), integraciones externas, resumen de API REST |
 | [03_actores_y_roles.md](03_actores_y_roles.md) | Actores del sistema, matriz RBAC (autenticado vs. anónimo), rutas públicas |
 | [04_modelo_de_datos.md](04_modelo_de_datos.md) | ERD, entidades `users` (nueva), `scans`/`vulnerabilities` (existentes) — todas en PostgreSQL `db_fuzzing` |
-| [05_reglas_de_negocio.md](05_reglas_de_negocio.md) | 15 reglas RN-WS-01..15 por dominio (scan form, API, auth, frontend) |
-| [06_funcionalidades.md](06_funcionalidades.md) | 6 épicas, 24 historias de usuario (HU-EE-NN) con criterios de aceptación |
+| [05_reglas_de_negocio.md](05_reglas_de_negocio.md) | 16 reglas RN-WS-01..16 por dominio (scan form, API, auth, frontend) |
+| [06_funcionalidades.md](06_funcionalidades.md) | 6 épicas, 27 historias de usuario (HU-EE-NN, incl. HU-04-03 de CHANGE-23) con criterios de aceptación |
 | [07_flujos_principales.md](07_flujos_principales.md) | Flujos end-to-end: registro, login, escaneo (con diagramas de secuencia) |
 | [08_arquitectura_propuesta.md](08_arquitectura_propuesta.md) | Patrones (Repository/UoW/JWT/RFC7807/FSD), estructura de directorios, seguridad, variables de entorno |
 | [09_decisiones_y_supuestos.md](09_decisiones_y_supuestos.md) | 4 decisiones documentadas (incl. reuso de PostgreSQL `db_fuzzing`) + 3 supuestos inferidos |
