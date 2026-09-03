@@ -103,9 +103,10 @@ describe('el detector de rejillas no mobile-first detecta violaciones deliberada
 })
 
 /**
- * El alcance es toda la Landing —`widgets/` y la página que los compone—,
- * no sólo `widgets/`: la spec dice "ninguna sección de la Landing", y el
- * contenedor de `pages/LandingPage` es parte de esa disposición.
+ * El alcance es toda la Landing —`widgets/` y las páginas que los
+ * componen (`HomePage`, `ScanPage`)—, no sólo `widgets/`: la spec dice
+ * "ninguna sección de la Landing", y esos contenedores son parte de esa
+ * disposición.
  */
 function landingSourceFiles(): string[] {
   return listSourceFiles(srcRoot).filter((f) => f.startsWith('widgets/') || f.startsWith('pages/'))
@@ -123,10 +124,46 @@ describe('la Landing no fija anchos ni anchos mínimos en píxeles (D-12, R-3)',
     }
     expect(offenders).toEqual([])
   })
+
+  // task 6.6 (`about-page`): el guard de arriba escanea todo `widgets/` y
+  // `pages/` genéricamente, así que ya cubre `/about` sin cambios — esta
+  // aserción hace explícito que la cobertura no es vacua: si algún día
+  // alguien excluye estos archivos del escaneo, este test lo nota.
+  it('el escaneo incluye a AboutWidget y AboutPage', () => {
+    expect(landingSourceFiles()).toEqual(
+      expect.arrayContaining(['widgets/about/ui/AboutWidget.tsx', 'pages/AboutPage/index.tsx']),
+    )
+  })
+
+  // task 7.4 (unified-design-system, D-11.9): el panel de resultados
+  // (CHANGE-26) quedaba fuera del alcance verificado por este guard hasta
+  // este change — la spec `design-system` extiende explícitamente la
+  // garantía de adaptabilidad a sus superficies. Como el guard de arriba ya
+  // escanea todo `widgets/` y `pages/` genéricamente, ya cubre a
+  // `dashboard-*` y a sus dos tablas de datos sin cambios; esta aserción
+  // hace explícita esa cobertura, para que no quede vacua.
+  it('el escaneo cubre a los widgets dashboard-* y a sus dos tablas de datos', () => {
+    expect(landingSourceFiles()).toEqual(
+      expect.arrayContaining([
+        'widgets/dashboard-kpis/ui/DashboardKpisWidget.tsx',
+        'widgets/dashboard-charts/ui/DashboardChartsWidget.tsx',
+        'widgets/dashboard-filters/ui/DashboardFiltersWidget.tsx',
+        'widgets/dashboard-endpoints/ui/DashboardEndpointsWidget.tsx',
+        'widgets/dashboard-detail-table/ui/DashboardDetailTableWidget.tsx',
+        'pages/DashboardPage/index.tsx',
+      ]),
+    )
+  })
 })
 
 describe('las rejillas de la Landing parten de una sola columna (landing-composition)', () => {
-  it('la sección de herramientas y la del flujo declaran grid-cols-1 como base y amplían por punto de corte', () => {
+  // CHANGE-19 ("Estilos de frontend afinados", commit a799400) migró
+  // `HowItWorksWidget` de una rejilla a un timeline vertical (`<ol>` con
+  // `flex flex-col`, sin ningún `grid-cols-*`): no es una rotura, es un
+  // layout de una sola columna por construcción, fuera del alcance de este
+  // guard. `FeaturesWidget` sigue siendo la sección de la Landing que
+  // declara una rejilla multi-columna.
+  it('la sección de herramientas declara grid-cols-1 como base y amplía por punto de corte', () => {
     const gridded: string[] = []
     const offenders: string[] = []
 
@@ -138,13 +175,10 @@ describe('las rejillas de la Landing parten de una sola columna (landing-composi
       if (violations.length > 0) offenders.push(`${file}: ${violations.join(', ')}`)
     }
 
-    // Si alguna de las dos secciones dejara de usar una rejilla, este guard
-    // se volvería vacuo sin avisar: se afirma también a quién cubre.
+    // Si la sección dejara de usar una rejilla, este guard se volvería
+    // vacuo sin avisar: se afirma también a quién cubre.
     expect(gridded).toEqual(
-      expect.arrayContaining([
-        'widgets/features-section/ui/FeaturesWidget.tsx',
-        'widgets/how-it-works/ui/HowItWorksWidget.tsx',
-      ]),
+      expect.arrayContaining(['widgets/features-section/ui/FeaturesWidget.tsx']),
     )
     expect(offenders).toEqual([])
   })

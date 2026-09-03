@@ -35,6 +35,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 
 from fastapi_bridge.api.v1.auth.router import router as auth_router
+from fastapi_bridge.api.v1.dashboard.router import router as dashboard_router
 from fastapi_bridge.api.v1.scan.router import router as scan_router
 from fastapi_bridge.core.limiter import build_limiter
 from fastapi_bridge.core.settings import Settings, get_settings
@@ -141,10 +142,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health() -> HealthResponse:
         return HealthResponse(status="ok", service="wasa-fastapi-bridge")
 
-    # CHANGE-05 (D-12) / CHANGE-12: sin `prefix` acá en ninguno de los dos --
-    # cada router ya declara el suyo (`/api/v1/auth`, `/api/v1/scan`).
+    # CHANGE-05 (D-12) / CHANGE-12 / CHANGE-25: sin `prefix` acá en ninguno de
+    # los tres -- cada router ya declara el suyo (`/api/v1/auth`,
+    # `/api/v1/scan`, `/api/v1/dashboard`).
     app.include_router(auth_router)
     app.include_router(scan_router)
+    app.include_router(dashboard_router)
 
     return app
 

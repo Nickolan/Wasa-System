@@ -15,8 +15,20 @@ const BASE_CLASSES =
  * placeholder background (`bg-slate-950`).
  */
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: 'bg-sky-600 text-white hover:bg-sky-500',
+  primary: 'bg-brand text-white hover:bg-brand-hover',
   secondary: 'border border-slate-600 bg-transparent text-slate-100 hover:bg-slate-800',
+}
+
+/**
+ * Clases del `Button` sin renderizar un `<button>` (task 6.2,
+ * unified-design-system): para el único caso legítimo de un consumidor que
+ * necesita el mismo tratamiento visual sobre un elemento distinto —un
+ * `<Link>` de navegación, que no puede ser un `<button>`—. Single source
+ * para las dos apariencias, sin duplicar `PRIMARY_ACTION_CLASSES`/
+ * `SECONDARY_ACTION_CLASSES` verbatim entre módulos (D-11.5).
+ */
+export function buttonClasses(variant: ButtonVariant = 'primary'): string {
+  return cn(BASE_CLASSES, VARIANT_CLASSES[variant])
 }
 
 export interface ButtonProps extends ComponentPropsWithoutRef<'button'> {

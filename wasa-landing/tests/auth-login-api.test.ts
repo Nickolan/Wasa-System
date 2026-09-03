@@ -20,7 +20,6 @@ afterEach(() => {
 
 function stubEnv() {
   vi.stubEnv('VITE_API_BASE_URL', 'http://bridge.local')
-  vi.stubEnv('VITE_DASHBOARD_URL', 'http://localhost:5174')
   vi.resetModules()
 }
 

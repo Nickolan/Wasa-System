@@ -5,13 +5,11 @@ import { AxiosError } from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useAuthStore } from '@app/stores/authStore'
-import { apiBaseUrl, dashboardUrl } from '@shared/config/env'
+import { useAuthStore } from '@entities/user'
 import { axiosInstance, configureApiClient } from '@shared/api/axiosInstance'
 import { SCAN_START_PATH } from '@features/scan-form/api/submitScan'
 import {
   SCAN_SUBMIT_MESSAGES,
-  SUCCESS_REDIRECT_DELAY_MS,
   asOptionalNumber,
   useScanForm,
 } from '@features/scan-form/model/useScanForm'
@@ -390,7 +388,7 @@ describe('useScanForm — campos numéricos con setValueAs (7.10, D-9, R-5)', ()
   })
 })
 
-describe('useScanForm — aceptación y redirección al Dashboard (8.1–8.6, D-11)', () => {
+describe('useScanForm — aceptación sin navegación (D-2, D-9)', () => {
   const originalLocation = window.location
 
   beforeEach(() => {
@@ -398,22 +396,17 @@ describe('useScanForm — aceptación y redirección al Dashboard (8.1–8.6, D-
       configurable: true,
       value: { ...originalLocation, href: 'http://localhost/scan' },
     })
-    // shouldAdvanceTime: waitFor() de testing-library encuesta con
-    // setTimeout real; sin esto, con los timers falsos activos el reloj
-    // nunca avanza solo y waitFor cuelga hasta su propio timeout (5000ms).
-    vi.useFakeTimers({ shouldAdvanceTime: true })
   })
 
   afterEach(() => {
-    vi.useRealTimers()
     Object.defineProperty(window, 'location', {
       configurable: true,
       value: originalLocation,
     })
   })
 
-  it('un 202 deja el hook en éxito, y tras SUCCESS_REDIRECT_DELAY_MS navega a dashboardUrl (8.1, 8.2)', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+  it('un 202 deja el hook en éxito, con scanResponse expuesto y sin ninguna navegación', async () => {
+    const user = userEvent.setup()
     installAdapter(async (config) =>
       successResponse(config, { scan_id: 'sc-1', status: 'queued' as const, message: 'ok' }),
     )
@@ -423,14 +416,10 @@ describe('useScanForm — aceptación y redirección al Dashboard (8.1–8.6, D-
 
     await waitFor(() => expect(screen.getByTestId('success')).toHaveTextContent('sc-1'))
     expect(window.location.href).toBe('http://localhost/scan')
-
-    await vi.advanceTimersByTimeAsync(SUCCESS_REDIRECT_DELAY_MS)
-
-    expect(window.location.href).toBe(dashboardUrl)
   })
 
-  it.each([401, 400, 422, 429, 502])('un rechazo %i no navega, ni siquiera pasado el retraso (8.3)', async (status) => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+  it.each([401, 400, 422, 429, 502])('un rechazo %i no navega ni entra en estado de espera (D-9)', async (status) => {
+    const user = userEvent.setup()
     installAdapter(async (config) => {
       throw rejectionError(config, status, { ...problem, status })
     })
@@ -439,13 +428,13 @@ describe('useScanForm — aceptación y redirección al Dashboard (8.1–8.6, D-
     await user.click(screen.getByRole('button', { name: 'enviar' }))
 
     await waitFor(() => expect(screen.getByTestId('server-error')).not.toBeEmptyDOMElement())
-    await vi.advanceTimersByTimeAsync(SUCCESS_REDIRECT_DELAY_MS)
 
     expect(window.location.href).toBe('http://localhost/scan')
+    expect(screen.queryByTestId('success')).not.toBeInTheDocument()
   })
 
-  it('un fallo de red tampoco navega (8.3)', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+  it('un fallo de red tampoco navega ni entra en estado de espera (D-9)', async () => {
+    const user = userEvent.setup()
     installAdapter(async (config) => {
       throw networkError(config)
     })
@@ -454,13 +443,13 @@ describe('useScanForm — aceptación y redirección al Dashboard (8.1–8.6, D-
     await user.click(screen.getByRole('button', { name: 'enviar' }))
 
     await waitFor(() => expect(screen.getByTestId('server-error')).not.toBeEmptyDOMElement())
-    await vi.advanceTimersByTimeAsync(SUCCESS_REDIRECT_DELAY_MS)
 
     expect(window.location.href).toBe('http://localhost/scan')
+    expect(screen.queryByTestId('success')).not.toBeInTheDocument()
   })
 
-  it('desmontar tras el 202 pero antes del temporizador no navega y no propaga error (8.4)', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+  it('desmontar tras el 202 no navega y no propaga error', async () => {
+    const user = userEvent.setup()
     installAdapter(async (config) =>
       successResponse(config, { scan_id: 'sc-2', status: 'queued' as const, message: 'ok' }),
     )
@@ -472,17 +461,12 @@ describe('useScanForm — aceptación y redirección al Dashboard (8.1–8.6, D-
 
     expect(() => {
       unmount()
-      vi.advanceTimersByTime(SUCCESS_REDIRECT_DELAY_MS)
     }).not.toThrow()
     expect(window.location.href).toBe('http://localhost/scan')
   })
 
-  it('el destino es dashboardUrl, distinto de apiBaseUrl (8.5)', () => {
-    expect(dashboardUrl).not.toBe(apiBaseUrl)
-  })
-
-  it('tras la aceptación no hay una segunda llamada a submitScan antes de navegar (8.6)', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+  it('tras la aceptación no hay una segunda llamada a submitScan', async () => {
+    const user = userEvent.setup()
     let callCount = 0
     installAdapter(async (config) => {
       callCount += 1
@@ -496,8 +480,8 @@ describe('useScanForm — aceptación y redirección al Dashboard (8.1–8.6, D-
     await waitFor(() => expect(screen.getByTestId('success')).toBeInTheDocument())
     expect(callCount).toBe(1)
 
-    // El botón sigue en el DOM (no se desmontó) — un segundo clic antes de
-    // que venza el temporizador de redirección no debe volver a despachar.
+    // El botón sigue en el DOM (no se desmontó) — un segundo clic no debe
+    // volver a despachar una solicitud.
     await user.click(button)
     expect(callCount).toBe(1)
   })

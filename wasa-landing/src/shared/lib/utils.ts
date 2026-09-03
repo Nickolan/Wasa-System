@@ -13,6 +13,18 @@ export function cn(...inputs: ClassValue[]): string {
 }
 
 /**
+ * Coalescencia null/string-vacío → fallback (fix de code-review, hallazgo
+ * #2): `DashboardVulnerabilityModal` (`orFallback`) y
+ * `DashboardDetailTableWidget` (`orMarker`) declaraban, cada uno por su
+ * cuenta, esta misma lógica. El fallback es un parámetro, no un valor fijo:
+ * cada llamador decide el suyo (un marcador genérico, o uno distinto por
+ * campo).
+ */
+export function orFallback(value: string | null | undefined, fallback: string): string {
+  return value == null || value === '' ? fallback : value
+}
+
+/**
  * Shared "what message shows and what id describes it" precedence rule used
  * by both `Input` and `Checkbox` (error beats helper, design.md D-7):
  * showing both would duplicate what `aria-describedby` reads and compete

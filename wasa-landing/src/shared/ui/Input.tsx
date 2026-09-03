@@ -14,7 +14,7 @@ const BASE_CLASSES =
 const STATE_CLASSES = {
   rest: 'border-slate-700 focus:ring-sky-600',
   error: 'border-red-500 focus:ring-red-500',
-  valid: 'border-green-500 focus:ring-green-500',
+  valid: 'border-success focus:ring-success',
 } as const
 
 export interface InputProps extends ComponentPropsWithoutRef<'input'> {

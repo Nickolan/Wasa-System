@@ -1,19 +1,21 @@
 import { useAuthStore } from '@entities/user'
+import type { ScanResponse } from '@entities/scan'
 import { ScanForm } from '@features/scan-form'
+import { Button } from '@shared/ui/Button'
 import { SCAN_FORM_ANCHOR_ID } from '../model/anchor'
 
 /**
  * Clases Tailwind planas concentradas acá (D-13), un punto por componente.
+ * Las acciones del muro consumen `shared/ui/Button` (task 6.2,
+ * unified-design-system D-3): ya no declaran su propia apariencia —
+ * `PRIMARY_ACTION_CLASSES`/`SECONDARY_ACTION_CLASSES` eran idénticas,
+ * verbatim, a las de `ScanPendingWidget.tsx` (D-11.5).
  */
 const SECTION_CLASSES = 'flex w-full flex-col items-center gap-6 px-6 py-16 text-center text-slate-100'
 const ETHICAL_NOTICE_CLASSES = 'max-w-xl text-sm text-slate-400'
 const WALL_CLASSES = 'flex w-full max-w-md flex-col items-center gap-4'
 const WALL_TEXT_CLASSES = 'text-base text-slate-300'
 const ACTIONS_CLASSES = 'flex gap-3'
-const PRIMARY_ACTION_CLASSES =
-  'rounded-md bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500'
-const SECONDARY_ACTION_CLASSES =
-  'rounded-md border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-100 hover:border-slate-500'
 const FORM_WRAPPER_CLASSES = 'flex w-full max-w-md flex-col items-stretch gap-4'
 const LOGOUT_CLASSES = 'self-end text-sm text-slate-400 underline-offset-2 hover:text-slate-200 hover:underline'
 
@@ -31,6 +33,12 @@ export interface ScanFormWidgetProps {
   onRequestLogin: () => void
   /** Invocada cuando el visitante sin sesión activa "Crear Cuenta" desde el muro. */
   onRequestRegister: () => void
+  /**
+   * Reenviada tal cual a `ScanForm` como `onAccepted` (design.md D-1, task
+   * 3.4). Opcional, sin lógica propia acá: el widget no decide qué pasa con
+   * la aceptación, sólo la deja pasar hasta quien lo compone.
+   */
+  onScanAccepted?: (response: ScanResponse) => void
 }
 
 /**
@@ -43,7 +51,7 @@ export interface ScanFormWidgetProps {
  * sólo se monta cuando `isAuthenticated` es `true`, leído con un selector
  * del store (no `getState()`) para que la transición sea reactiva.
  */
-export function ScanFormWidget({ onRequestLogin, onRequestRegister }: ScanFormWidgetProps) {
+export function ScanFormWidget({ onRequestLogin, onRequestRegister, onScanAccepted }: ScanFormWidgetProps) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const logout = useAuthStore((state) => state.logout)
 
@@ -60,7 +68,7 @@ export function ScanFormWidget({ onRequestLogin, onRequestRegister }: ScanFormWi
           <button type="button" onClick={logout} className={LOGOUT_CLASSES}>
             Cerrar sesión
           </button>
-          <ScanForm />
+          <ScanForm onAccepted={onScanAccepted} />
         </div>
       ) : (
         <div className={WALL_CLASSES}>
@@ -68,12 +76,12 @@ export function ScanFormWidget({ onRequestLogin, onRequestRegister }: ScanFormWi
             Necesitás una sesión activa para usar el formulario de escaneo.
           </p>
           <div className={ACTIONS_CLASSES}>
-            <button type="button" onClick={onRequestLogin} className={PRIMARY_ACTION_CLASSES}>
+            <Button type="button" onClick={onRequestLogin}>
               Iniciar Sesión
-            </button>
-            <button type="button" onClick={onRequestRegister} className={SECONDARY_ACTION_CLASSES}>
+            </Button>
+            <Button type="button" variant="secondary" onClick={onRequestRegister}>
               Crear Cuenta
-            </button>
+            </Button>
           </div>
         </div>
       )}

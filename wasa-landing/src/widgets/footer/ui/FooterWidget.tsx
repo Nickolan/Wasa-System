@@ -7,14 +7,16 @@ export function FooterWidget() {
   return (
     <footer className="w-full border-t border-slate-800/50 bg-slate-950/80">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-6 py-10">
-        <div className="flex items-center gap-6 text-sm text-slate-500">
+        {/* text-muted (D-2): "links del footer" es literalmente el uso documentado de este rol. */}
+        <div className="flex items-center gap-6 text-sm text-text-muted">
           <Link to="/" className="transition-colors hover:text-slate-300">Inicio</Link>
           <span className="text-slate-800">·</span>
           <Link to="/scan" className="transition-colors hover:text-slate-300">Escanear</Link>
           <span className="text-slate-800">·</span>
           <span>WASA — Web Application Security Analyzer</span>
         </div>
-        <p className="text-xs text-slate-600">
+        {/* caption (D-6): text-xs text-slate-500 — antes text-slate-600, único desvío de la escala nombrada. */}
+        <p className="text-xs text-slate-500">
           Proyecto Final de Ciberseguridad — trabajo académico. Uso exclusivamente ético y autorizado.
         </p>
       </div>

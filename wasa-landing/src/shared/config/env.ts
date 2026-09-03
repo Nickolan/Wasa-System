@@ -9,7 +9,7 @@
  * configuración.
  */
 
-type RequiredEnvVarName = 'VITE_API_BASE_URL' | 'VITE_DASHBOARD_URL'
+type RequiredEnvVarName = 'VITE_API_BASE_URL'
 
 function readRequiredEnvVar(name: RequiredEnvVarName): string {
   const value = import.meta.env[name]
@@ -22,5 +22,7 @@ function readRequiredEnvVar(name: RequiredEnvVarName): string {
 /** Origen del FastAPI Bridge (sin prefijo de versión de API — D-3). */
 export const apiBaseUrl: string = readRequiredEnvVar('VITE_API_BASE_URL')
 
-/** Destino de redirección de navegador al Dashboard React existente. */
-export const dashboardUrl: string = readRequiredEnvVar('VITE_DASHBOARD_URL')
+// `VITE_DASHBOARD_URL` fue dada de baja (CHANGE-26, D-9): la pantalla de
+// resultados es una ruta de esta misma aplicación (`/dashboard`), no un
+// destino externo que configurar. Un despliegue que la siga declarando no
+// falla — el módulo simplemente no la lee más.

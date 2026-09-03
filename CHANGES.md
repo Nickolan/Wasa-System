@@ -1200,6 +1200,162 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 
 ---
 
+## FASE 3 — Fixes Finales (post-roadmap)
+
+> Al igual que `CHANGE-23`, estos 4 changes NO tienen equivalente en
+> `docs_wasa_sdd/CHANGES.md` original — son adiciones a pedido explícito del usuario
+> (2026-08-31) tras dar por completado el roadmap de 23 changes, para cerrar 4 fixes
+> finales antes de considerar el sistema terminado. Ver detalle en §Trazabilidad.
+>
+> Dependencias entre sí:
+> ```
+> CHANGE-24 (frontend-info-and-pending-screens) ─┐
+>                                                  ├─ CHANGE-27 (unified-design-system)
+> CHANGE-25 (dashboard-read-router)               │
+>       │                                          │
+>       └── CHANGE-26 (dashboard-frontend-migration) ┘
+> ```
+> `CHANGE-24` y `CHANGE-25` son independientes entre sí (pueden proponerse en paralelo).
+> `CHANGE-26` depende de `CHANGE-25`. `CHANGE-27` depende de `CHANGE-24` y `CHANGE-26`
+> (necesita que todas las pantallas nuevas existan para poder armonizarlas).
+
+### [CHANGE-24] `frontend-info-and-pending-screens`
+- **Estado**: `[x]` implementado (apply completo; `archive` pendiente de autorización explícita del usuario)
+- **Historias US**: N/A — fix post-roadmap, ver §Trazabilidad
+- **Scope**:
+  - **Pantalla de espera post-escaneo** (reemplaza el Fix 3 del usuario): en
+    `wasa-landing/src/features/scan-form/model/useScanForm.ts`, eliminar el `useEffect`
+    que hace `window.location.href = dashboardUrl` tras `SUCCESS_REDIRECT_DELAY_MS`.
+    Cuando `scanResponse` está seteado, `ScanPage` renderiza una pantalla persistente
+    (no un mensaje de 2s) que informa: escaneo en curso, ETA ~10 minutos, aviso de que
+    el reporte llega por email a la casilla del usuario (el envío ya lo hace CHANGE-23,
+    archivado — este change es 100% de UX/frontend, no toca n8n).
+  - **Página informativa** (Fix 1): `pages/AboutPage` nueva + widget de contenido — qué
+    es WASA, qué herramientas corre (OWASP ZAP, Nuclei, SQLMap, ffuf), cómo es el flujo
+    de un escaneo, qué pasa con los datos/privacidad del usuario.
+  - Ruta `/about` montada en `App.tsx` + link nuevo en `Navbar` (además del link a la
+    pantalla de espera si aplica navegación directa).
+- **Dependencias**: CHANGE-18, CHANGE-20 (ambos archivados)
+- **Duración estimada**: 2 horas
+- **Governance**: BAJO
+- **Leer antes**:
+  - `knowledge-base/01_vision_y_objetivos.md`
+  - `knowledge-base/08_arquitectura_propuesta.md` §Estructura de directorios (FSD `wasa-landing`)
+  - `openspec/changes/archive/*/feature-scan-form/` y `.../landing-page-composition/` (patrones ya establecidos de widget/página)
+- **Criterios de Aceptación**:
+  - [x] Tras un `202` en `/scan/start`, no ocurre ninguna navegación a `VITE_DASHBOARD_URL`; se muestra una pantalla de espera con el mensaje de "~10 minutos" y aviso de email. Evidencia: `wasa-landing/tests/scan-page.test.tsx` (grupo "la aceptación reemplaza el formulario"), `wasa-landing/tests/scan-pending-copy.test.ts`, `wasa-landing/tests/scan-form-no-redirect.test.ts`.
+  - [x] La pantalla de espera es accesible (`role="status"` o equivalente) y no deja al usuario sin salida (link para volver al inicio). Evidencia: `wasa-landing/tests/scan-pending-widget.test.tsx` (grupos "región de estado accesible" y "salidas").
+  - [x] `/about` renderiza contenido sobre WASA: propósito, herramientas usadas, flujo de escaneo, privacidad de datos. Evidencia: `wasa-landing/tests/about-sections.test.ts`, `wasa-landing/tests/about-widget.test.tsx`, `wasa-landing/tests/about-page.test.tsx`.
+  - [x] El link a la página de info aparece en el `Navbar`. Evidencia: `wasa-landing/tests/navbar.test.tsx`, `wasa-landing/tests/app-routing-about.test.tsx`.
+  - [x] `tsc --noEmit` sin errores; los tests existentes de `scan-form` se actualizan y siguen verdes tras remover el redirect. Evidencia: `npx tsc -b` (vía `npm run build`) y `npm run test:run` — ver tasks 8.6 de `openspec/changes/frontend-info-and-pending-screens/tasks.md`.
+
+---
+
+### [CHANGE-25] `dashboard-read-router`
+- **Estado**: `[x]` implementado (apply completo; `archive` pendiente de autorización explícita del usuario)
+- **Historias US**: N/A — fix post-roadmap, ver §Trazabilidad
+- **Scope**:
+  - Backend, `fastapi_bridge`. Nuevo router `api/v1/dashboard/router.py`:
+    `GET /api/v1/dashboard`, réplica exacta del contrato de
+    `dashboard/server-fuzzing/index.js` (`scan_id`, `severity`, `source` como query
+    params opcionales, retorna `{scans, vulnerabilities}`).
+  - Acceso de **solo lectura** a las tablas existentes `scans`/`vulnerabilities` de
+    `db_fuzzing` — vía SQLAlchemy Core (`Table` reflejada o `text()`), **sin** declarar
+    modelos ORM nuevos ni tocar `Base.metadata` (regla dura: el Bridge no migra/escribe
+    sobre esas tablas, ver `knowledge-base/04_modelo_de_datos.md`).
+  - Sin autenticación — mismo comportamiento que hoy tiene `server-fuzzing` (decisión
+    confirmada explícitamente por el usuario: el dashboard unificado debe comportarse
+    "exactamente igual" al actual, sin agregar login ni filtrado por usuario).
+  - Reemplaza las credenciales de Postgres hardcodeadas de `server-fuzzing` por
+    `settings.DB_URL`.
+- **Dependencias**: CHANGE-00a
+- **Duración estimada**: 1.5 horas
+- **Governance**: MEDIO (lee datos de vulnerabilidades del sistema compartido; sin
+  autenticación por decisión explícita del usuario — riesgo heredado del sistema
+  actual, no introducido por este change, pero a surfacear en el proposal)
+- **Leer antes**:
+  - `knowledge-base/04_modelo_de_datos.md` §scans, §vulnerabilities (tablas existentes)
+  - `knowledge-base/08_arquitectura_propuesta.md` §Patrones (Repository), §Seguridad
+  - `dashboard/server-fuzzing/index.js` (contrato exacto a replicar)
+- **Criterios de Aceptación**:
+  - [x] `GET /api/v1/dashboard` sin filtros retorna `{scans, vulnerabilities}` con el mismo shape que hoy expone `server-fuzzing`.
+  - [x] Filtros `scan_id`/`severity`/`source` funcionan igual que en `server-fuzzing/index.js` (incluidas sus asimetrías: `severity` a minúsculas, `source` sensible a mayúsculas, filtros sólo sobre `vulnerabilities`).
+  - [x] El código nuevo no ejecuta ningún `INSERT`/`UPDATE`/`DELETE`/DDL sobre `scans`/`vulnerabilities` (anclado por `tests/test_no_shared_db_impact.py`, AST + runtime).
+  - [x] El router no declara modelos ORM nuevos en `Base.metadata` (`test_shared_tables_are_not_in_the_declarative_metadata`).
+  - [x] Las credenciales de conexión vienen de `settings.DB_URL`, no hardcodeadas.
+  - [ ] Smoke manual contra `db_fuzzing` real (tasks 7.3–7.5 de `openspec/changes/dashboard-read-router/tasks.md`) — no ejecutable en este entorno de desarrollo (sin acceso a la instancia PostgreSQL real); queda pendiente de correr una vez desplegado, antes de dar por cerrado el `archive`.
+
+**Contrato exacto que CHANGE-26 debe consumir** (implementado, disponible para el frontend unificado):
+- `GET /api/v1/dashboard?scan_id=<int>&severity=<str>&source=<str>` — los tres query params son opcionales y se combinan por `AND`.
+- Respuesta `200`: `{"scans": [...], "vulnerabilities": [...]}`. `scans` siempre completo, ordenado por `scan_date` ascendente; los filtros aplican sólo a `vulnerabilities`.
+- `ScanRow`: `id`, `target_url`, `scan_date`, `total_vulnerabilities`, `critical_count`, `high_count`, `medium_count`, `low_count`, `report_path` (todos opcionales; columnas no documentadas también llegan, `extra="allow"`).
+- `VulnerabilityRow`: `id`, `scan_id`, `source`, `type`, `severity`, `url`, `description`, `solution`, `cweid`, `evidence` (mismas reglas de opcionalidad y `extra`).
+- `severity` se compara en minúsculas (el cliente puede enviar `Critical`/`High`/etc.); `source` es sensible a mayúsculas y viaja tal cual; `scan_id` es entero (`422` si no lo es, a diferencia del `500` de `server-fuzzing`).
+- Sin autenticación, sin límite de tasa, error `5xx` en formato RFC 7807 (`application/problem+json`) ante fallo de base.
+- Pendiente conocido (no bloqueante): `openspec/changes/dashboard-read-router/design.md` R-4 — posible diferencia de formato de `scan_date` entre `node-pg` (UTC con `Z`) y Pydantic (ISO-8601 sin offset si la columna es `TIMESTAMP WITHOUT TIME ZONE`); a verificar en el smoke manual y, si aparece, resolver en el formateo del frontend de CHANGE-26, nunca en el backend.
+
+---
+
+### [CHANGE-26] `dashboard-frontend-migration`
+- **Estado**: `[x]` implementado (apply completo; `archive` pendiente de autorización explícita del usuario)
+- **Historias US**: N/A — fix post-roadmap, ver §Trazabilidad
+- **Scope**:
+  - Frontend, `wasa-landing`. Agregar `recharts` como dependencia (mismo lib que ya usa
+    `dashboard-fuzzing`, minimiza diff de migración).
+  - Portar la UI completa de `dashboard/dashboard-fuzzing/src/App.jsx` (KPIs, pie chart
+    de severidad, line chart de evolución, tabla de endpoints, tabla de detalle +
+    modal, filtros, `Sidebar`) a `pages/DashboardPage` + widgets nuevos en FSD (TS),
+    consumiendo `GET /api/v1/dashboard` vía `axiosInstance` en vez del `fetch` a
+    `localhost:5000` hardcodeado.
+  - Ruta `/dashboard` montada + link en `Navbar`. Mismo comportamiento funcional que
+    hoy: sin login, sin filtrado por usuario.
+  - **Retiro del dashboard standalone** (último grupo de tasks de este change, no un
+    change aparte): sacar `dashboard/dashboard-fuzzing` y `dashboard/server-fuzzing`
+    del flujo de arranque — actualizar README/scripts, quitar `VITE_DASHBOARD_URL` de
+    `.env.example` (y de la pantalla de espera de CHANGE-24 si todavía la referenciaba).
+    Las carpetas se mueven o eliminan según se acuerde puntualmente en el `apply`.
+- **Dependencias**: CHANGE-25, CHANGE-20
+- **Duración estimada**: 3 horas
+- **Governance**: MEDIO
+- **Leer antes**:
+  - `dashboard/dashboard-fuzzing/src/App.jsx` y `src/components/Sidebar.jsx` (UI a portar)
+  - `knowledge-base/08_arquitectura_propuesta.md` §Estructura de directorios (FSD)
+  - `openspec/changes/archive/*/landing-page-composition/` (patrón de rutas/Navbar ya establecido)
+- **Criterios de Aceptación**:
+  - [x] La UI portada (KPIs, gráfico de severidad, gráfico de evolución, tabla de endpoints, tabla de detalle + modal, filtros) reproduce el comportamiento de `dashboard-fuzzing` consumiendo `GET /api/v1/dashboard` vía `axiosInstance`. Evidencia: `wasa-landing/tests/dashboard-metrics.test.ts`, `tests/fetch-dashboard.test.ts`, `tests/use-dashboard.test.tsx`, `tests/dashboard-{view-switcher,filters-widget,kpis-widget,charts-widget,endpoints-widget,detail-table-widget,empty-state,vulnerability-modal}.test.tsx`, `tests/dashboard-page.test.tsx`.
+  - [x] Ruta `/dashboard` montada + link en `Navbar`. Evidencia: `wasa-landing/tests/dashboard-routing.test.tsx`, `tests/navbar.test.tsx`, `tests/app-routing-about.test.tsx` (las demás rutas siguen montando lo suyo).
+  - [x] `dashboard/dashboard-fuzzing` y `dashboard/server-fuzzing` quedan retirados del flujo (README/scripts actualizados). Evidencia: decisión D-10 = **eliminar** (registrada en el checkpoint de governance de este `apply`, tomada con el contexto de que no hay Postgres real disponible en este entorno para el smoke de R-1); ambas carpetas fueron borradas físicamente (`git status` las muestra como `D`, verificado); `README.md` actualizado (arquitectura, estructura del repositorio, stack, variables de entorno, alcance) sin ninguna instrucción de arranque para `dashboard/`; no había scripts en la raíz del repo que las levantaran.
+  - [x] `VITE_DASHBOARD_URL` deja de ser necesaria (documentada su baja en `.env.example`). Evidencia de código: `src/shared/config/env.ts`, `src/vite-env.d.ts`, `wasa-landing/tests/env.test.ts` (superficie de una sola variable, ausencia/presencia de la variable dada de baja sin efecto). **Pendiente manual**: el sandbox de este agente deniega toda operación (Read/Edit/Bash) sobre archivos `.env*`; el usuario debe borrar a mano la línea `VITE_DASHBOARD_URL=...` de `wasa-landing/.env.example` y `wasa-landing/.env` — no bloquea funcionalidad, el código ya no la lee.
+  - [x] `npm run build` sin errores TypeScript. Evidencia: `tsc -b && vite build` completó con exit code 0 (bundle final 830 KB / 249 KB gzip, con la advertencia esperada de chunk grande por `recharts`, D-1/R-6 — sin errores de tipos).
+
+---
+
+### [CHANGE-27] `unified-design-system`
+- **Estado**: `[x]` implementado (apply completo; `archive` pendiente de autorización explícita del usuario)
+- **Historias US**: N/A — fix post-roadmap, ver §Trazabilidad
+- **Scope**:
+  - Fix 4 del usuario: armonización visual pura, sin cambios de lógica ni de datos.
+  - Definir tokens de diseño compartidos (paleta, tipografía, espaciados) en
+    `shared/ui`, reutilizados por landing, auth, scan-form/pantalla de espera, página
+    de info y dashboard.
+  - Reemplazar el tema oscuro ad hoc de `dashboard-fuzzing` (CSS suelto,
+    `App.css`/`Sidebar.css`) por clases Tailwind consistentes con el resto de la app.
+  - Pasada de profesionalización sobre TODAS las pantallas (landing, auth, scan-form,
+    pantalla de espera, info page, dashboard), no solo las nuevas.
+- **Dependencias**: CHANGE-24, CHANGE-26
+- **Duración estimada**: 2.5 horas
+- **Governance**: MEDIO (sin riesgo de dominio crítico, pero decisiones de paleta/tipografía a validar con el usuario antes de aplicarlas a todo el sistema)
+- **Leer antes**:
+  - `knowledge-base/02_descripcion_general.md`
+  - Todos los widgets/pages existentes de `wasa-landing` (`widgets/`, `pages/`) y el `pages/DashboardPage` de CHANGE-26
+- **Criterios de Aceptación**:
+  - [x] Tokens de diseño (paleta, tipografía, espaciados) centralizados en `shared/ui`, reutilizados por landing, auth, scan-form/pantalla de espera, info page y dashboard. **`src/shared/ui/tokens.ts` (18 roles) + `@theme` de `src/app/index.css`, con guard antideriva (`tests/design-tokens.test.ts`) y guard de "todo token tiene consumidor" (`tests/design-system-single-source.test.ts`). Primitivos `Card`/`Table`/`PageShell`/`PageHeader`/`Modal` los consumen; dashboard, landing, scan y auth componen sobre esos primitivos.**
+  - [x] El tema oscuro ad hoc de `dashboard-fuzzing` queda reemplazado por clases Tailwind consistentes con el resto de la app. **Las nueve superficies del dashboard (CHANGE-26) migradas a `Card`/`Table` sobre `.glass-card`/`.glass-card-flat` — el mismo tratamiento glassmorphism que `FeaturesWidget`/`HowItWorksWidget` ya usaban (D-4). Directorio standalone `dashboard/dashboard-fuzzing/` ya retirado (ver estado `D` en `git status`, trabajo de CHANGE-26).**
+  - [x] Ningún cambio de lógica/datos — verificable por diff (sin cambios en `api/`, `model/`, salvo estructura JSX estrictamente visual). **`git diff --stat` sobre `src/**/api/`, `src/entities/*/model/`, `src/features/*/model/` y `fastapi_bridge/` sin archivos tocados por este apply (tasks.md 8.3).**
+  - [x] `npm run build` sin errores. **`npx tsc -b` sin salida; `npm run build` → exit 0, `✓ 766 modules transformed`. Suite completa: 85 archivos / 815 tests, todos verdes (`npm run test:run`).**
+
+---
+
 ## Estimación Total de Duración
 
 | Change          | Duración estimada |
@@ -1231,7 +1387,11 @@ Paso │ Agente A (Backend Core — Auth)     │ Agente B (Backend Aux — Scan
 | CHANGE-21       | 1.5 horas           |
 | CHANGE-22       | 2 horas             |
 | CHANGE-23       | 1.5 horas           |
-| **TOTAL**       | **~35.5 horas**     |
+| CHANGE-24       | 2 horas             |
+| CHANGE-25       | 1.5 horas           |
+| CHANGE-26       | 3 horas             |
+| CHANGE-27       | 2.5 horas           |
+| **TOTAL**       | **~44.5 horas**     |
 
 ## Sprints Sugeridos (agrupación alternativa, secuencial — ver también los GATEs de paralelismo arriba)
 
@@ -1302,3 +1462,16 @@ disparó el escaneo, en vez de a la dirección fija que hoy tiene hardcodeada el
 `Send email` del workflow. Documentado en `knowledge-base/05_reglas_de_negocio.md`
 (RN-WS-16), `knowledge-base/06_funcionalidades.md` (HU-04-03) y
 `knowledge-base/09_decisiones_y_supuestos.md` (DD-05).
+
+**Excepción — FASE 3 (CHANGE-24..CHANGE-27)**: tampoco tienen equivalente en
+`docs_wasa_sdd/CHANGES.md` — son 4 fixes finales agregados a pedido explícito del
+usuario (2026-08-31), tras dar por completo el roadmap original de 23 changes, para
+cerrar el sistema: (1) pantallas informativas nuevas (info del servicio + pantalla de
+espera post-escaneo en vez de redirect al dashboard), (2) unificación del dashboard
+standalone (`dashboard/dashboard-fuzzing` + `dashboard/server-fuzzing`) dentro de
+`fastapi_bridge`/`wasa-landing` para dejar de levantar 2 backends y 2 frontends, y
+(3) armonización visual entre landing y dashboard. No están reflejados todavía en
+`knowledge-base/` (HU, reglas de negocio, decisiones) — si se quiere trazabilidad
+completa, un change posterior debería actualizar `knowledge-base/06_funcionalidades.md`
+y `knowledge-base/09_decisiones_y_supuestos.md` con estas 4 historias, siguiendo el
+mismo patrón que CHANGE-23/HU-04-03.

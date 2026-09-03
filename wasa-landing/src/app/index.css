@@ -9,12 +9,38 @@
   --color-surface-base: var(--color-slate-950);
   /* slate-900 — el fondo de tarjetas y modales */
   --color-surface-elevated: var(--color-slate-900);
+  /* slate-950 — la caja de evidencia dentro del modal de vulnerabilidad */
+  --color-surface-sunken: var(--color-slate-950);
+  /* slate-800 — bordes de tarjeta, separadores de navbar y footer */
+  --color-border-subtle: var(--color-slate-800);
+  /* slate-700 — botón secundario, borde en reposo de Input, select de filtros */
+  --color-border-strong: var(--color-slate-700);
   /* sky-600 — el CTA y la variante primaria */
   --color-brand: var(--color-sky-600);
-  /* red-500 — bordes y mensajes de error */
+  /* sky-500 — hover del CTA */
+  --color-brand-hover: var(--color-sky-500);
+  /* sky-400 — íconos, antetítulos, escudo del logo, inicio del degradado */
+  --color-brand-accent: var(--color-sky-400);
+  /* white — cifras destacadas, énfasis dentro de un título */
+  --color-text-emphasis: var(--color-white);
+  /* slate-100 — texto corriente sobre superficie oscura */
+  --color-text-primary: var(--color-slate-100);
+  /* slate-400 — párrafos, etiquetas de KPI, ejes de gráfico */
+  --color-text-secondary: var(--color-slate-400);
+  /* slate-500 — pies de foto, referencias, links del footer */
+  --color-text-muted: var(--color-slate-500);
+  /* red-500 — bordes y mensajes de error, severidad Critical */
   --color-danger: var(--color-red-500);
-  /* green-500 — borde de campo válido */
+  /* orange-500 — severidad High */
+  --color-warning: var(--color-orange-500);
+  /* yellow-500 — severidad Medium */
+  --color-caution: var(--color-yellow-500);
+  /* sky-500 — severidad Low (unificada con la marca, D-2) */
+  --color-info: var(--color-sky-500);
+  /* green-500 — borde de campo válido, escaneo aceptado */
   --color-success: var(--color-green-500);
+  /* slate-500 — severidad no enumerada */
+  --color-neutral: var(--color-slate-500);
 }
 
 @layer base {
@@ -86,15 +112,28 @@
   .animation-delay-500 { animation-delay: 500ms; }
   .animation-delay-600 { animation-delay: 600ms; }
 
-  /* Glassmorphism card */
-  .glass-card {
+  /*
+   * Glassmorphism card: gradiente y borde compartidos entre `.glass-card` y
+   * `.glass-card-flat` (fix de code-review, hallazgo #6 — antes duplicados
+   * a mano, byte-idénticos, en dos reglas separadas). `.glass-card-flat` es
+   * la misma superficie sin `backdrop-filter` (D-4 trade-off): para la
+   * única superficie donde el costo de composición del blur no se
+   * justifica (una tabla larga con scroll interno detrás de un
+   * `ResponsiveContainer` de Recharts en la misma pantalla) — por eso
+   * `backdrop-filter` queda como declaración exclusiva de `.glass-card`.
+   */
+  .glass-card,
+  .glass-card-flat {
     background: linear-gradient(
       135deg,
       rgba(15, 23, 42, 0.8) 0%,
       rgba(30, 41, 59, 0.6) 100%
     );
-    backdrop-filter: blur(12px);
     border: 1px solid rgba(148, 163, 184, 0.1);
+  }
+
+  .glass-card {
+    backdrop-filter: blur(12px);
   }
 
   .glass-card:hover {

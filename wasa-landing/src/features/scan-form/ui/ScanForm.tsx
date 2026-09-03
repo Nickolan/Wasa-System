@@ -3,6 +3,7 @@
  * a `model/useScanForm.ts` — ninguna lógica de validación ni de fetch vive
  * acá (regla dura del proyecto: el componente orquesta, el hook decide).
  */
+import { useEffect } from 'react'
 import { Button } from '@shared/ui/Button'
 import { Checkbox } from '@shared/ui/Checkbox'
 import { Input } from '@shared/ui/Input'
@@ -12,12 +13,30 @@ import {
   SQLMAP_RISK_MAX,
   SQLMAP_RISK_MIN,
 } from '@entities/scan'
+import type { ScanResponse } from '@entities/scan'
 import { SCAN_SUCCESS_MESSAGE, asOptionalNumber, useScanForm } from '../model/useScanForm'
 
-export function ScanForm() {
+export interface ScanFormProps {
+  /**
+   * Invocada exactamente una vez con la respuesta del Bridge cuando el
+   * escaneo es aceptado (design.md D-1). Opcional: sin ella, el
+   * comportamiento previo se conserva —la confirmación inline de éxito
+   * (`role="status"`) sigue viéndose.
+   */
+  onAccepted?: (response: ScanResponse) => void
+}
+
+export function ScanForm({ onAccepted }: ScanFormProps = {}) {
   const { register, formState, watch, onSubmit, isLoading, serverError, scanResponse } = useScanForm()
   const ethicalConsent = watch('ethical_consent')
   const accepted = scanResponse !== null
+
+  // Efecto de la transición de estado (D-1), no del `try` del submit: así
+  // respeta el desmontaje y se dispara una sola vez, porque `succeededRef`
+  // del hook garantiza que `scanResponse` se setea una única vez.
+  useEffect(() => {
+    if (scanResponse) onAccepted?.(scanResponse)
+  }, [scanResponse, onAccepted])
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">

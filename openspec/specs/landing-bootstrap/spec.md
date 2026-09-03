@@ -53,21 +53,21 @@ La página de aterrizaje SHALL ser la composición de esas secciones, no un cont
 - **WHEN** se inspecciona `index.html`
 - **THEN** su `<script type="module">` apunta a `/src/app/main.tsx`, y ese archivo existe y monta la aplicación React
 
-#### Scenario: La app renderiza el placeholder de la Landing
-- **WHEN** se renderiza `src/app/App.tsx`
-- **THEN** el árbol resultante contiene el componente `LandingPage` definido en `src/pages/LandingPage/index.tsx`
+#### Scenario: La app renderiza la Landing en la ruta raíz
+- **WHEN** se renderiza `src/app/App.tsx` en la ruta `/`
+- **THEN** el árbol resultante contiene el componente `HomePage` definido en `src/pages/HomePage/index.tsx` (`pages/LandingPage` fue retirado por ser código huérfano de routing, sin equivalente montado desde el commit `a799400`)
 
 #### Scenario: La Landing es la composición de sus secciones
-- **WHEN** se renderiza `src/pages/LandingPage/index.tsx`
-- **THEN** el árbol resultante contiene las secciones de la Landing y ningún contenido de relleno
+- **WHEN** se renderiza `src/pages/HomePage/index.tsx`
+- **THEN** el árbol resultante contiene las secciones de la Landing (Hero, Features, HowItWorks, Footer) y ningún contenido de relleno
 
 #### Scenario: La capa widgets está poblada y organizada en slices
 - **WHEN** se inspecciona `src/widgets/`
 - **THEN** contiene una slice por sección de la Landing, cada una con su punto de entrada público, y ya no contiene el `.gitkeep` que sostenía el directorio vacío
 
 #### Scenario: Ningún formulario queda montado fuera de su sección
-- **WHEN** se inspecciona `src/pages/LandingPage/index.tsx`
-- **THEN** no monta directamente ningún formulario de dominio: cada formulario llega a la página a través de la sección que lo contiene
+- **WHEN** se inspecciona `src/pages/HomePage/index.tsx`
+- **THEN** no monta directamente ningún formulario de dominio (el formulario de escaneo vive en `pages/ScanPage`, ruta `/scan`, no en la Landing)
 
 ### Requirement: Fronteras de import entre capas FSD
 Las capas SHALL respetar una dirección de dependencia única y descendente: `app → pages → widgets → features → entities → shared`. Ninguna capa SHALL importar de una capa superior, y `shared/` SHALL permanecer libre de todo conocimiento del dominio WASA.
@@ -121,13 +121,19 @@ La aplicación SHALL procesar Tailwind CSS 4 mediante el plugin `@tailwindcss/vi
 ### Requirement: Dependencias del stack frontend disponibles
 El `package.json` SHALL declarar el stack completo que el roadmap consume en changes posteriores, en las versiones de la tabla de stack del proyecto, y cada dependencia SHALL ser importable sin error.
 
+La librería de gráficos que la pantalla de resultados necesita SHALL formar parte de ese manifiesto como dependencia de runtime: la visualización de la distribución por severidad y de la evolución histórica (`dashboard-screen`) es funcionalidad de producción, no herramienta de desarrollo ni de pruebas.
+
 #### Scenario: Manifiesto completo
 - **WHEN** se inspeccionan las dependencias de runtime de `package.json`
-- **THEN** figuran `react`, `react-dom`, `react-hook-form`, `zod`, `@hookform/resolvers`, `axios` y `zustand`
+- **THEN** figuran `react`, `react-dom`, `react-hook-form`, `zod`, `@hookform/resolvers`, `axios`, `zustand` y `recharts`
 
 #### Scenario: Zustand importable
 - **WHEN** se importa `create` desde `zustand`
 - **THEN** el import resuelve y expone una función, sin error de módulo ni de tipos
+
+#### Scenario: La librería de gráficos es importable y tipada
+- **WHEN** se importa la librería de gráficos desde el código de la aplicación
+- **THEN** el import resuelve y la verificación de tipos del proyecto termina sin errores, sin necesidad de un paquete de tipos aparte
 
 #### Scenario: Runner de tests operativo
 - **WHEN** se ejecuta el comando de tests del proyecto

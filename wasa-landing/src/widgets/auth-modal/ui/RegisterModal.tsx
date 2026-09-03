@@ -17,7 +17,7 @@ export interface RegisterModalProps {
  */
 export function RegisterModal({ isOpen, onClose, onSwitchToLogin, onAuthSuccess }: RegisterModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Crear cuenta">
+    <Modal isOpen={isOpen} onClose={onClose} title="Crear cuenta" closeLabel="Cerrar">
       <RegisterForm
         onSuccess={() => {
           onClose()

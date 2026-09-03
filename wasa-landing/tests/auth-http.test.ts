@@ -13,7 +13,6 @@ afterEach(() => {
 describe('authHttp: instancia de axios propia de la slice (D-1, D-2, R-6)', () => {
   it('baseURL se deriva de apiBaseUrl con el prefijo /api/v1/auth', async () => {
     vi.stubEnv('VITE_API_BASE_URL', 'http://bridge.local')
-    vi.stubEnv('VITE_DASHBOARD_URL', 'http://localhost:5174')
     vi.resetModules()
 
     const { authHttp } = await import('@features/auth/lib/authHttp')
@@ -23,7 +22,6 @@ describe('authHttp: instancia de axios propia de la slice (D-1, D-2, R-6)', () =
 
   it('el timeout está configurado explícitamente (~15s, D-14)', async () => {
     vi.stubEnv('VITE_API_BASE_URL', 'http://bridge.local')
-    vi.stubEnv('VITE_DASHBOARD_URL', 'http://localhost:5174')
     vi.resetModules()
 
     const { authHttp } = await import('@features/auth/lib/authHttp')
@@ -33,7 +31,6 @@ describe('authHttp: instancia de axios propia de la slice (D-1, D-2, R-6)', () =
 
   it('no tiene ningún interceptor de request ni de response (D-2)', async () => {
     vi.stubEnv('VITE_API_BASE_URL', 'http://bridge.local')
-    vi.stubEnv('VITE_DASHBOARD_URL', 'http://localhost:5174')
     vi.resetModules()
 
     const { authHttp } = await import('@features/auth/lib/authHttp')

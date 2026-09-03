@@ -135,3 +135,56 @@ describe('Modal: título y scroll', () => {
     document.body.style.overflow = ''
   })
 })
+
+describe('Modal: rama muerta del header eliminada (fix code-review #5)', () => {
+  it('closeLabel sin title no renderiza el botón de cierre (rama simplificada, sin caso de uso real hoy)', () => {
+    render(
+      <Modal isOpen onClose={vi.fn()} closeLabel="Cerrar">
+        contenido
+      </Modal>,
+    )
+    expect(screen.queryByRole('button', { name: 'Cerrar' })).not.toBeInTheDocument()
+  })
+
+  it('title con closeLabel sigue renderizando el botón de cierre (caso real, sin regresión)', () => {
+    render(
+      <Modal isOpen onClose={vi.fn()} title="Detalle" closeLabel="Cerrar">
+        contenido
+      </Modal>,
+    )
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toBeInTheDocument()
+  })
+})
+
+describe('Modal: ancho configurable (D-8)', () => {
+  it('el ancho por defecto conserva la clase max-w-md actual', () => {
+    render(
+      <Modal isOpen onClose={vi.fn()}>
+        contenido
+      </Modal>,
+    )
+    expect(screen.getByRole('dialog').className).toMatch(/\bmax-w-md\b/)
+  })
+
+  it('maxWidth="lg" produce una clase de ancho distinta y mayor (max-w-2xl)', () => {
+    render(
+      <Modal isOpen onClose={vi.fn()} maxWidth="lg">
+        contenido
+      </Modal>,
+    )
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.className).toMatch(/\bmax-w-2xl\b/)
+    expect(dialog.className).not.toMatch(/\bmax-w-md\b/)
+  })
+
+  it('el diálogo declara alto máximo y su propio desplazamiento vertical', () => {
+    render(
+      <Modal isOpen onClose={vi.fn()}>
+        contenido
+      </Modal>,
+    )
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.className).toMatch(/max-h-\[85vh\]/)
+    expect(dialog.className).toMatch(/overflow-y-auto/)
+  })
+})

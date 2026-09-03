@@ -108,8 +108,10 @@ from fastapi_bridge.core.security import decode_access_token
 from fastapi_bridge.core.settings import Settings, get_settings
 from fastapi_bridge.db.session import get_session_factory
 from fastapi_bridge.services.auth_service import AuthService
+from fastapi_bridge.services.dashboard_service import DashboardService
 from fastapi_bridge.services.scan_service import ScanService
 from fastapi_bridge.uow.auth_unit_of_work import AuthUoW
+from fastapi_bridge.uow.dashboard_unit_of_work import DashboardUoW
 
 
 def get_auth_service(settings: Annotated[Settings, Depends(get_settings)]) -> AuthService:
@@ -174,3 +176,12 @@ CurrentUserEmail = Annotated[str, Depends(get_current_user)]
 # `app.dependency_overrides[get_scan_service]`.
 def get_scan_service() -> ScanService:
     return ScanService()
+
+
+# CHANGE-25, D-9: mismo patrón que `get_auth_service` -- compone un
+# `DashboardService` nuevo por petición sobre una `DashboardUoW` construida
+# con la `session_factory` existente. Sin engine ni `Settings` propios: el
+# mismo pool que atiende `users` atiende esta consulta.
+def get_dashboard_service(settings: Annotated[Settings, Depends(get_settings)]) -> DashboardService:
+    session_factory = get_session_factory(settings)
+    return DashboardService(DashboardUoW(session_factory))

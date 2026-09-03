@@ -17,7 +17,7 @@ export interface LoginModalProps {
  */
 export function LoginModal({ isOpen, onClose, onSwitchToRegister, onAuthSuccess }: LoginModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Iniciar sesión">
+    <Modal isOpen={isOpen} onClose={onClose} title="Iniciar sesión" closeLabel="Cerrar">
       <LoginForm
         onSuccess={() => {
           onClose()

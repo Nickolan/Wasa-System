@@ -33,6 +33,7 @@ from __future__ import annotations
 from typing import Any, AsyncIterator, Callable
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 
@@ -128,4 +129,85 @@ async def user_session() -> AsyncIterator[AsyncSession]:
         yield session
     finally:
         await session.close()
+        await engine.dispose()
+
+
+# CHANGE-25 (dashboard-read-router), tarea 4.1 -- DDL local a la tabla de columnas
+# conocidas por D-2 (`schemas/dashboard_schemas.py`: `ScanRow`/`VulnerabilityRow`).
+_SHARED_TABLES_DDL = (
+    """
+    CREATE TABLE scans (
+        id INTEGER PRIMARY KEY,
+        target_url TEXT,
+        scan_date TEXT,
+        total_vulnerabilities INTEGER,
+        critical_count INTEGER,
+        high_count INTEGER,
+        medium_count INTEGER,
+        low_count INTEGER,
+        report_path TEXT
+    )
+    """,
+    """
+    CREATE TABLE vulnerabilities (
+        id INTEGER PRIMARY KEY,
+        scan_id INTEGER,
+        source TEXT,
+        type TEXT,
+        severity TEXT,
+        url TEXT,
+        description TEXT,
+        solution TEXT,
+        cweid TEXT,
+        evidence TEXT
+    )
+    """,
+)
+
+
+@pytest.fixture
+async def shared_tables_session() -> AsyncIterator[AsyncSession]:
+    """`AsyncSession` real contra SQLite en memoria, con `scans` y
+    `vulnerabilities` propias del test (CHANGE-25, tarea 4.1) -- para
+    ejercitar `DashboardRepository` sin tocar `db_fuzzing` real.
+
+    Motor propio, construido con `create_async_engine` directo: NUNCA pasa
+    por `get_engine`/`get_session_factory` de `db/base.py`/`db/session.py`
+    (mismo criterio que `user_session`/`user_session_factory` arriba), así
+    que ningún test de este dominio puede apuntar por accidente a la base
+    compartida real. Las columnas replican exactamente las declaradas en
+    `ScanRow`/`VulnerabilityRow` (D-2); sembrar filas es responsabilidad de
+    cada test, ejecutando `INSERT` directo sobre esta misma sesión antes de
+    pasarla a `DashboardRepository` (que sólo lee).
+    """
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        for statement in _SHARED_TABLES_DDL:
+            await connection.execute(text(statement))
+
+    session_factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+    session = session_factory()
+    try:
+        yield session
+    finally:
+        await session.close()
+        await engine.dispose()
+
+
+@pytest.fixture
+async def shared_tables_session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """`async_sessionmaker` sobre el mismo SQLite en memoria de
+    `shared_tables_session`, pero entregando la **factory** (lo que necesita
+    `DashboardUoW`, cuyo constructor recibe `session_factory` y abre una
+    sesión nueva en cada `__aenter__` -- mismo patrón que
+    `user_session_factory`/`AuthUoW`)."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        for statement in _SHARED_TABLES_DDL:
+            await connection.execute(text(statement))
+
+    session_factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+    try:
+        yield session_factory
+    finally:
         await engine.dispose()

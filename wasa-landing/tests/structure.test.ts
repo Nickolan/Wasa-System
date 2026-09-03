@@ -84,9 +84,9 @@ describe('src/features quedó poblado por las slices auth (CHANGE-16) y scan-for
     expect(existsSync(path.join(projectRoot, 'src/features/.gitkeep'))).toBe(false)
   })
 
-  it('src/features/ contiene únicamente las slices auth y scan-form, sin otras slices', () => {
-    const entries = readdirSync(path.join(projectRoot, 'src/features'))
-    expect(entries).toEqual(['auth', 'scan-form'])
+  it('src/features/ contiene únicamente las slices auth, dashboard y scan-form, sin otras slices (dashboard: CHANGE-26)', () => {
+    const entries = readdirSync(path.join(projectRoot, 'src/features')).sort()
+    expect(entries).toEqual(['auth', 'dashboard', 'scan-form'])
   })
 
   it('src/features/auth/ contiene exactamente los módulos declarados por el design (D-1)', () => {
@@ -126,9 +126,9 @@ describe('src/entities quedó poblado por la slice user (CHANGE-14, D-9)', () =>
     expect(existsSync(path.join(projectRoot, 'src/entities/.gitkeep'))).toBe(false)
   })
 
-  it('src/entities/ contiene únicamente las slices scan y user, sin otras (D-9 de CHANGE-17)', () => {
-    const entries = readdirSync(path.join(projectRoot, 'src/entities'))
-    expect(entries).toEqual(['scan', 'user'])
+  it('src/entities/ contiene únicamente las slices dashboard, scan y user, sin otras (D-9 de CHANGE-17; dashboard: CHANGE-26)', () => {
+    const entries = readdirSync(path.join(projectRoot, 'src/entities')).sort()
+    expect(entries).toEqual(['dashboard', 'scan', 'user'])
   })
 
   it('src/entities/user/ contiene exactamente los módulos declarados por el design (D-2, D-8; CHANGE-16 D-3/A suma authStore.ts)', () => {
@@ -160,10 +160,28 @@ describe('src/widgets/ quedó poblado por CHANGE-19 (D-1..D-14)', () => {
     expect(existsSync(path.join(projectRoot, 'src/widgets/.gitkeep'))).toBe(false)
   })
 
-  it('src/widgets/ contiene únicamente las seis slices declaradas por el design, sin otras', () => {
+  it('src/widgets/ contiene únicamente las slices declaradas por el design, sin otras (D-1..D-14 + navbar de CHANGE-19 "Estilos de frontend afinados"; `about` y `scan-pending` de `frontend-info-and-pending-screens`; las ocho `dashboard-*` de CHANGE-26)', () => {
     const entries = readdirSync(path.join(projectRoot, 'src/widgets')).sort()
     expect(entries).toEqual(
-      ['auth-modal', 'features-section', 'footer', 'hero', 'how-it-works', 'scan-form'].sort(),
+      [
+        'about',
+        'auth-modal',
+        'dashboard-charts',
+        'dashboard-detail-table',
+        'dashboard-empty-state',
+        'dashboard-endpoints',
+        'dashboard-filters',
+        'dashboard-kpis',
+        'dashboard-view-switcher',
+        'dashboard-vulnerability-modal',
+        'features-section',
+        'footer',
+        'hero',
+        'how-it-works',
+        'navbar',
+        'scan-form',
+        'scan-pending',
+      ].sort(),
     )
   })
 
@@ -213,11 +231,30 @@ describe('src/widgets/ quedó poblado por CHANGE-19 (D-1..D-14)', () => {
   })
 })
 
-describe('src/shared/ui/ está poblado por CHANGE-15 (shared-ui-atoms)', () => {
-  it('contains exactly the five primitives from the roadmap, no .gitkeep leftover', () => {
+describe('src/shared/ui/ está poblado por CHANGE-15 (shared-ui-atoms) + unified-design-system', () => {
+  it('contains exactly the nine primitives plus the tokens module and severityBadgeClasses, no .gitkeep leftover', () => {
+    // unified-design-system (spec shared-ui-kit) amplía el roster original de
+    // cinco primitivos con los de composición (Card, Table, PageShell,
+    // PageHeader) y agrega `tokens.ts` (D-5: el espejo TS de los tokens de
+    // `@theme`, para el único consumidor que no puede leer una clase CSS).
+    // `severityBadgeClasses.ts` se suma con el fix de code-review #1: las
+    // clases Tailwind concretas del badge de severidad se mudan acá desde
+    // `entities/dashboard`, que no puede declarar presentación.
     const files = listFilesRecursively(path.join(projectRoot, 'src/shared/ui'))
     expect(files.sort()).toEqual(
-      ['Button.tsx', 'Checkbox.tsx', 'Input.tsx', 'Modal.tsx', 'Spinner.tsx'].sort(),
+      [
+        'Button.tsx',
+        'Card.tsx',
+        'Checkbox.tsx',
+        'Input.tsx',
+        'Modal.tsx',
+        'PageHeader.tsx',
+        'PageShell.tsx',
+        'Spinner.tsx',
+        'Table.tsx',
+        'severityBadgeClasses.ts',
+        'tokens.ts',
+      ].sort(),
     )
   })
 })

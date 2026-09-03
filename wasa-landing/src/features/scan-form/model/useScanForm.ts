@@ -4,19 +4,12 @@
  * delega acá — ninguna lógica de fetch/validación vive en el componente.
  */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import type { z } from 'zod'
 import type { ScanForm, ScanRequest } from '@entities/scan'
 import { scanSchema, SQLMAP_LEVEL_DEFAULT, SQLMAP_RISK_DEFAULT } from '@entities/scan'
-import { dashboardUrl } from '@shared/config/env'
 import { ScanSubmitError, submitScan } from '../api/submitScan'
-
-/**
- * HU-05-01: el mensaje de éxito se ve ~2s antes de redirigir (D-11) — no es
- * inmediato, para que la pantalla no cambie sin explicación aparente.
- */
-export const SUCCESS_REDIRECT_DELAY_MS = 2000
 
 /**
  * `setValueAs`, no `valueAsNumber` (D-9, R-5): un campo numérico vacío con
@@ -43,15 +36,16 @@ export const SCAN_SUBMIT_MESSAGES = {
 } as const
 
 /**
- * Confirmación de aceptación (`202`) que el usuario ve durante
- * `SUCCESS_REDIRECT_DELAY_MS`, antes de que el navegador se vaya al Dashboard
- * (HU-05-01, HU-05-02, `scan-submission`: "la confirmación SHALL ser visible
- * antes de la navegación"). Es texto propio, no el `message` que devolvió el
- * Bridge: ese campo es un registro del orquestador, no texto de interfaz —
- * mismo criterio que D-12 aplica al `detail` del error.
+ * Confirmación de aceptación (`202`) que ven los consumidores por defecto de
+ * `ScanForm` (sin `onAccepted`, D-2): no promete ninguna navegación —la
+ * pantalla de espera de `scan-pending-screen` es responsabilidad de
+ * `ScanPage`, no de este mensaje inline— y menciona el canal real de
+ * entrega (email). Es texto propio, no el `message` que devolvió el Bridge:
+ * ese campo es un registro del orquestador, no texto de interfaz — mismo
+ * criterio que D-12 aplica al `detail` del error.
  */
 export const SCAN_SUCCESS_MESSAGE =
-  'Escaneo encolado. Te llevamos al Dashboard para seguir el progreso…'
+  'Escaneo encolado. Te enviaremos el reporte por correo electrónico cuando termine.'
 
 /**
  * Traduce un `ScanSubmitError` al mensaje que ve el usuario (D-5, D-12):
@@ -139,22 +133,6 @@ export function useScanForm() {
   // `onValidSubmit` de forma síncrona.
   // oxlint-disable-next-line react/refs
   const onSubmit = form.handleSubmit(onValidSubmit)
-
-  /**
-   * Redirección al Dashboard tras la aceptación (D-11): en un efecto con
-   * `clearTimeout` en el cleanup, no en el `then` del submit — un
-   * `setTimeout` disparado ahí seguiría vivo tras desmontar el componente y
-   * navegaría igual (8.4). jsdom no implementa la navegación; los tests
-   * sustituyen `window.location` por un objeto propio (D-11, nota de
-   * testing) — este módulo solo le asigna `href`.
-   */
-  useEffect(() => {
-    if (!scanResponse) return
-    const timeoutId = setTimeout(() => {
-      window.location.href = dashboardUrl
-    }, SUCCESS_REDIRECT_DELAY_MS)
-    return () => clearTimeout(timeoutId)
-  }, [scanResponse])
 
   return {
     register: form.register,

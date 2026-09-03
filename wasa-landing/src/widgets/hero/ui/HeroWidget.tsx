@@ -12,7 +12,7 @@ export function HeroWidget() {
       {/* Background layers */}
       <div className="absolute inset-0 bg-grid-pattern" />
       <div className="absolute inset-0 bg-gradient-to-b from-sky-900/20 via-transparent to-slate-950" />
-      <div className="animate-glow-pulse absolute top-1/4 left-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-500/10 blur-[120px]" />
+      <div className="animate-glow-pulse absolute top-1/4 left-1/2 h-[31.25rem] w-[31.25rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-500/10 blur-[120px]" />
 
       {/* Content */}
       <div className="relative z-10 flex max-w-3xl flex-col items-center gap-8">
@@ -51,17 +51,18 @@ export function HeroWidget() {
         {/* Stats */}
         <div className="animate-fade-in-up animation-delay-400 mt-8 flex gap-8 text-center sm:gap-16">
           <div>
-            <span className="text-2xl font-bold text-white">4</span>
+            {/* text-emphasis (D-2): cifra destacada — el consumidor de este token semántico (D-11.2). */}
+            <span className="text-2xl font-bold text-text-emphasis">4</span>
             <p className="text-xs text-slate-500">Herramientas</p>
           </div>
           <div className="h-10 w-px bg-slate-800" />
           <div>
-            <span className="text-2xl font-bold text-white">OWASP</span>
+            <span className="text-2xl font-bold text-text-emphasis">OWASP</span>
             <p className="text-xs text-slate-500">Top 10 Coverage</p>
           </div>
           <div className="h-10 w-px bg-slate-800" />
           <div>
-            <span className="text-2xl font-bold text-white">100%</span>
+            <span className="text-2xl font-bold text-text-emphasis">100%</span>
             <p className="text-xs text-slate-500">Automatizado</p>
           </div>
         </div>

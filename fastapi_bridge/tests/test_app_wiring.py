@@ -108,13 +108,14 @@ def test_registration_does_not_depend_on_module_state():
         assert expected.issubset(set(app.exception_handlers.keys()))
 
 
-def test_route_surface_includes_health_auth_and_scan():
+def test_route_surface_includes_health_auth_scan_and_dashboard():
     # CHANGE-05: registrar los manejadores no monta rutas por sí solo -- lo
     # que monta el router de auth es `include_router` en `create_app()`. La
     # superficie vigente hasta CHANGE-11 era health + las dos rutas de auth,
-    # con scan todavía sin montar. CHANGE-12 monta `POST /api/v1/scan/start`:
-    # este test reemplaza al anterior (`test_route_surface_includes_health_and_auth_but_not_scan`),
-    # cuyo nombre y aserto de exclusión de scan quedaron desmentidos por ese
+    # con scan todavía sin montar. CHANGE-12 montó `POST /api/v1/scan/start`
+    # y CHANGE-25 monta `GET /api/v1/dashboard`: este test reemplaza al
+    # anterior (`test_route_surface_includes_health_auth_and_scan`), cuyo
+    # nombre y aserto de superficie exacta quedaron desmentidos por ese
     # montaje -- se renombra porque afirma lo contrario a partir de ahora.
     #
     # Se lee desde `app.openapi()["paths"]`, no desde `app.routes`: esta
@@ -128,7 +129,12 @@ def test_route_surface_includes_health_auth_and_scan():
     paths = set(app.openapi()["paths"].keys())
     assert "/health" in paths
     domain_paths = {p for p in paths if p.startswith("/api/")}
-    assert domain_paths == {"/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/scan/start"}
+    assert domain_paths == {
+        "/api/v1/auth/register",
+        "/api/v1/auth/login",
+        "/api/v1/scan/start",
+        "/api/v1/dashboard",
+    }
 
 
 def test_health_endpoint_still_returns_200_with_its_exact_contract():

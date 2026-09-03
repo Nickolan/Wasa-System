@@ -17,7 +17,7 @@ describe('package.json declares the full frontend stack manifest', () => {
     devDependencies?: Record<string, string>
   }
 
-  it.each(['react', 'react-dom', 'react-hook-form', 'zod', '@hookform/resolvers', 'axios', 'zustand'])(
+  it.each(['react', 'react-dom', 'react-hook-form', 'zod', '@hookform/resolvers', 'axios', 'zustand', 'recharts'])(
     '%s is a runtime dependency',
     (dep) => {
       expect(pkg.dependencies?.[dep]).toBeDefined()

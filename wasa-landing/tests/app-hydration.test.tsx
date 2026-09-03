@@ -1,5 +1,5 @@
 import { StrictMode } from 'react'
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '@app/App'
 import { useAuthStore } from '@entities/user'
@@ -17,6 +17,18 @@ beforeEach(() => {
 afterEach(() => {
   localStorage.clear()
   vi.useRealTimers()
+})
+
+// Rescatada de `landing-page.test.tsx` (pre-CHANGE-19): App ya no monta
+// `LandingPage` directamente — la ruta `/` renderiza `HomePage`, que
+// incluye `HeroWidget` con el título del producto — pero la aserción de
+// que `App` sigue mostrando el contenido de presentación en `/` sigue
+// siendo una regresión real a cubrir.
+describe('App: renderiza el contenido de presentación en / (regresión de landing-page.test.tsx)', () => {
+  it('el árbol de App contiene el título WASA', () => {
+    render(<App />)
+    expect(screen.getByRole('heading', { level: 1, name: /wasa/i })).toBeInTheDocument()
+  })
 })
 
 describe('App: la hidratación se dispara al montar (D-6)', () => {

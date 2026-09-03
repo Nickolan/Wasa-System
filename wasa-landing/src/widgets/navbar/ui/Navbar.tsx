@@ -1,9 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { dashboardUrl } from '@shared/config/env'
 
+/**
+ * D-8 de design.md: el orden refleja el embudo conocer → entender → actuar.
+ * "Acerca de" queda entre "Inicio" y "Escanear" — profundiza antes de la
+ * acción, sin interponerse entre "Escanear" y el botón del Dashboard.
+ */
 const NAV_LINKS = [
   { to: '/', label: 'Inicio' },
+  { to: '/about', label: 'Acerca de' },
   { to: '/scan', label: 'Escanear' },
 ] as const
 
@@ -67,15 +72,12 @@ export function Navbar() {
 
           <div className="mx-3 h-5 w-px bg-slate-700/50" />
 
-          <a
-            href={dashboardUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            to="/dashboard"
             className="glow-brand inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-sky-500"
           >
             Dashboard
-            <ExternalLinkIcon />
-          </a>
+          </Link>
         </div>
 
         {/* Mobile hamburger */}
@@ -110,15 +112,12 @@ export function Navbar() {
               {link.label}
             </Link>
           ))}
-          <a
-            href={dashboardUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            to="/dashboard"
             className="mt-2 inline-flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition-all duration-200 hover:bg-sky-500"
           >
             Dashboard
-            <ExternalLinkIcon />
-          </a>
+          </Link>
         </div>
       </div>
     </nav>
@@ -135,7 +134,7 @@ function ShieldIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth={1.5}
-      className="h-7 w-7 text-sky-400"
+      className="h-7 w-7 text-brand-accent"
     >
       <path
         strokeLinecap="round"
@@ -143,14 +142,6 @@ function ShieldIcon() {
         d="M12 3l7.5 3.5v5c0 4.7-3.2 9-7.5 10.5C7.7 20.5 4.5 16.2 4.5 11.5v-5L12 3z"
       />
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
-    </svg>
-  )
-}
-
-function ExternalLinkIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
-      <path d="M6.5 3.5a.5.5 0 0 0 0 1h3.793L3.146 11.646a.5.5 0 0 0 .708.708L10.5 5.707V9.5a.5.5 0 0 0 1 0v-5.5a.5.5 0 0 0-.5-.5H6.5z" />
     </svg>
   )
 }

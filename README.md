@@ -34,10 +34,17 @@ este proyecto — ver [`Herramientas/README.md`](Herramientas/README.md) para el
 de fuzzing original. Ese sistema se disparaba a mano desde n8n. Este repo agrega la pieza que
 faltaba para exponerlo como producto:
 
-- Una **Landing Page** en React donde un usuario anónimo entiende qué hace WASA y un usuario
-  autenticado puede lanzar un escaneo desde un formulario.
-- Un **FastAPI Bridge** que autentica usuarios (JWT), valida el pedido de escaneo y lo
-  reenvía al Webhook Trigger de n8n — sin ejecutar ninguna herramienta de seguridad él mismo.
+- Una **Landing Page** en React donde un usuario anónimo entiende qué hace WASA, un usuario
+  autenticado puede lanzar un escaneo desde un formulario, y cualquiera puede consultar los
+  resultados en `/dashboard`.
+- Un **FastAPI Bridge** que autentica usuarios (JWT), valida el pedido de escaneo, lo reenvía
+  al Webhook Trigger de n8n, y expone la consulta de resultados consolidados — sin ejecutar
+  ninguna herramienta de seguridad él mismo.
+
+> El dashboard de resultados era originalmente una aplicación React/Node.js separada
+> (`dashboard-fuzzing` + `server-fuzzing`, puerto 5000 propio). CHANGE-25/26 lo migraron a la
+> ruta `/dashboard` de esta misma Landing, consumiendo `GET /api/v1/dashboard` del Bridge: ya
+> no hay un segundo frontend ni un segundo backend que levantar para ver resultados.
 
 El Bridge **no** reemplaza ni toca el pipeline de escaneo existente (n8n → ZAP/Nuclei/ffuf →
 Redis → Worker SQLMap → PostgreSQL); solo agrega autenticación delante y una tabla `users`
@@ -52,8 +59,9 @@ USUARIO (Anónimo o Autenticado)
 CAPA 0 — React Landing (FSD)                              wasa-landing/
    │ POST /api/v1/auth/register | /login
    │ POST /api/v1/scan/start (Bearer JWT)
+   │ GET  /api/v1/dashboard (público, ruta /dashboard de esta misma app)
    ▼
-CAPA 1 — FastAPI Bridge (dominio Auth + dominio Scan)      fastapi_bridge/
+CAPA 1 — FastAPI Bridge (dominio Auth + dominio Scan + dominio Dashboard) fastapi_bridge/
    │  Router → Service → UoW → Repository, en cada dominio
    │                                  │
    │ SQLAlchemy async (asyncpg)       │ httpx POST + X-WASA-TOKEN
@@ -61,14 +69,17 @@ CAPA 1 — FastAPI Bridge (dominio Auth + dominio Scan)      fastapi_bridge/
 PostgreSQL db_fuzzing            CAPA 2 — n8n Workflow (existente, no se modifica)
 (tablas: users [nueva],          Webhook Trigger → ZAP → Nuclei → ffuf
  scans, vulnerabilities                             → LPUSH sqlmap_tasks (Redis)
- [existentes])                                                    │
-        ▲                                                  BLPOP  ▼
-        │ INSERT                          CAPA 3 — Worker Python (SQLMap)    Herramientas/
+ [existentes, sólo lectura                                        │
+ desde el Bridge])                                          BLPOP  ▼
+        ▲                                  CAPA 3 — Worker Python (SQLMap)    Herramientas/
+        │ INSERT                                                  │
         └───────────────────────────────────────────┘
-        │
-        ▼ SELECT
-CAPA 5 — Dashboard React/Node.js (existente, no se modifica)      dashboard/
 ```
+
+> La antigua CAPA 5 (Dashboard React/Node.js standalone, `dashboard/`) se retiró en
+> CHANGE-26: la consulta de resultados que hacía `server-fuzzing` directo a PostgreSQL ahora
+> la sirve el Bridge (`GET /api/v1/dashboard`), y la UI que hacía `dashboard-fuzzing` ahora es
+> la ruta `/dashboard` de `wasa-landing/` — CAPA 0.
 
 **Decisión clave**: el Bridge no levanta un motor de base de datos propio. Se conecta a la
 misma instancia PostgreSQL `db_fuzzing` que ya usa n8n/Worker para `scans`/`vulnerabilities`,
@@ -101,7 +112,6 @@ LandingPage_Tesis/
 │
 ├── Herramientas/           Laboratorio de fuzzing preexistente (n8n + ZAP + Nuclei +
 │                           ffuf + SQLMap Worker) — ver su propio README para instalación
-├── dashboard/               Dashboard React/Node.js preexistente (no se modifica en este proyecto)
 ├── docs/                    Runbooks operativos (ej. e2e-smoke-test-runbook.md)
 ├── docs_wasa_sdd/            Documentación fuente original de la tesis (roadmap, historias de usuario)
 ├── knowledge-base/           Base de conocimiento del dominio — fuente de verdad, leer antes de implementar
@@ -125,7 +135,6 @@ LandingPage_Tesis/
 | Backend — server | Uvicorn | 0.30+ |
 | Persistencia | PostgreSQL `db_fuzzing` (instancia **compartida** con el sistema WASA existente) | — |
 | Orquestación (existente) | n8n self-hosted, Redis/Memurai, Python SQLMap Worker | — |
-| Dashboard (existente) | React + Node.js/Express | — |
 | Herramientas de escaneo (existente) | OWASP ZAP, Nuclei, ffuf, SQLMap | — |
 
 ## Puesta en marcha
@@ -196,7 +205,6 @@ contrato de configuración).
 | Variable | Descripción |
 |---|---|
 | `VITE_API_BASE_URL` | URL base del FastAPI Bridge |
-| `VITE_DASHBOARD_URL` | URL del Dashboard, destino de redirección tras iniciar un escaneo |
 
 ## API del FastAPI Bridge
 
@@ -206,6 +214,7 @@ contrato de configuración).
 | `POST /api/v1/auth/register` | — | Registra usuario, retorna `201` + JWT |
 | `POST /api/v1/auth/login` | — | Verifica credenciales, retorna `200` + JWT |
 | `POST /api/v1/scan/start` | Bearer JWT | Valida y reenvía el pedido de escaneo a n8n, `202`; sujeto a rate limit |
+| `GET /api/v1/dashboard` | — (pública) | Consulta consolidada de escaneos y vulnerabilidades, con filtros opcionales `scan_id`/`severity`/`source`; consumida por `/dashboard` en la Landing |
 
 Todos los errores siguen **RFC 7807** (`application/problem+json`: `type`, `title`, `status`,
 `detail`, `instance`). Documentación interactiva en `/docs` una vez levantado el Bridge.
@@ -289,8 +298,9 @@ archivarlo — ver `openspec/changes/e2e-smoke-test/RESULTS.md`.
 - Redis/Memurai y el Worker de Python SQLMap — no se modifican.
 - Las tablas existentes `scans`/`vulnerabilities` — el Bridge solo las lee, nunca las escribe
   ni las migra.
-- El Dashboard React/Node.js — ya validado en la tesis original, no se reconstruye.
 - Recuperación de contraseña, verificación de email, refresh tokens.
+- Paginación, orden o caché sobre `GET /api/v1/dashboard` — el volumen actual es de tesis, no
+  de producción.
 
 ---
 

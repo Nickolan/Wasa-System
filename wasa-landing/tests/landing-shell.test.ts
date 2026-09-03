@@ -42,9 +42,18 @@ function walkSourceFiles(dir: string, onFile: (fullPath: string) => void): void 
  * Entradas de la paleta de Tailwind (`slate-950`, `sky-600`, …) que alguna
  * clase de utilidad aplica realmente en `src/`. Es la definición operativa de
  * "valor que la interfaz ya usa" del requisito "sin tokens huérfanos".
+ *
+ * `white`/`black`/`transparent`/`current` son entradas reales de la paleta
+ * de Tailwind sin matiz numérico (`--color-white`, no `--color-white-500`,
+ * ver `node_modules/tailwindcss/theme.css`) — el sufijo de matiz es
+ * opcional sólo para ese conjunto cerrado, no para cualquier palabra
+ * (evita falsos positivos como `text-center`).
  */
-const TAILWIND_COLOR_UTILITY =
-  /\b(?:bg|text|border|ring|outline|fill|stroke|from|via|to|decoration|accent|caret|placeholder|divide|shadow)-([a-z]+-\d{2,3})\b/g
+const SHADELESS_PALETTE_ENTRIES = ['white', 'black', 'transparent', 'current']
+const TAILWIND_COLOR_UTILITY = new RegExp(
+  `\\b(?:bg|text|border|ring|outline|fill|stroke|from|via|to|decoration|accent|caret|placeholder|divide|shadow)-([a-z]+-\\d{2,3}|${SHADELESS_PALETTE_ENTRIES.join('|')})\\b`,
+  'g',
+)
 
 function collectPaletteEntriesUsedInSrc(): Set<string> {
   const entries = new Set<string>()
@@ -216,7 +225,9 @@ describe('landing-shell — tokens de diseño con un único punto de declaració
 
     for (const [, name, rawValue] of colorDeclarations) {
       const value = rawValue.trim()
-      const aliasMatch = value.match(/^var\(\s*--color-([a-z]+-\d{2,3})\s*\)$/)
+      const aliasMatch = value.match(
+        new RegExp(`^var\\(\\s*--color-([a-z]+-\\d{2,3}|${SHADELESS_PALETTE_ENTRIES.join('|')})\\s*\\)$`),
+      )
       expect(aliasMatch, `${name} no es un alias var(--color-…) de la paleta: ${value}`).not.toBeNull()
       const entry = aliasMatch?.[1] ?? ''
       expect(

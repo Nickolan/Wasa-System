@@ -1,8 +1,9 @@
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { AxiosError } from 'axios'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ScanResponse } from '@entities/scan'
 import {
   SQLMAP_LEVEL_MAX,
   SQLMAP_LEVEL_MIN,
@@ -153,27 +154,8 @@ describe('ScanForm — error de servidor a nivel de formulario (9.6)', () => {
   })
 })
 
-describe('ScanForm — confirmación de éxito antes de navegar (scan-submission, HU-05-01/02, D-11)', () => {
-  const originalLocation = window.location
-
-  beforeEach(() => {
-    // jsdom no implementa la navegación: se sustituye `window.location` por
-    // un objeto propio (D-11, nota de testing) para que el temporizador de
-    // redirección no emita "Not implemented: navigation".
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      value: { ...originalLocation, href: 'http://localhost/scan' },
-    })
-  })
-
-  afterEach(() => {
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      value: originalLocation,
-    })
-  })
-
-  it('tras un 202 muestra la confirmación de éxito en la interfaz, antes de la navegación', async () => {
+describe('ScanForm — confirmación de éxito, sin navegación (scan-submission, D-2, D-9)', () => {
+  it('tras un 202 muestra la confirmación de éxito en la interfaz, sin navegar', async () => {
     const user = userEvent.setup()
     installAdapter(async (config) =>
       successResponse(config, { scan_id: 'sc-1', status: 'queued' as const, message: 'Escaneo encolado' }),
@@ -186,10 +168,9 @@ describe('ScanForm — confirmación de éxito antes de navegar (scan-submission
     await waitFor(() => {
       expect(screen.getByText(SCAN_SUCCESS_MESSAGE)).toBeInTheDocument()
     })
-    expect(window.location.href).toBe('http://localhost/scan')
   })
 
-  it('tras la aceptación el control de envío queda no enviable (el navegador está por irse al Dashboard)', async () => {
+  it('tras la aceptación el control de envío queda no enviable (guard de un segundo disparo)', async () => {
     const user = userEvent.setup()
     installAdapter(async (config) =>
       successResponse(config, { scan_id: 'sc-2', status: 'queued' as const, message: 'Escaneo encolado' }),
@@ -237,6 +218,73 @@ describe('ScanForm — confirmación de éxito antes de navegar (scan-submission
     await waitFor(() => expect(screen.getByText(SCAN_SUCCESS_MESSAGE)).toBeInTheDocument())
     expect(container.textContent).not.toMatch(/node-7/)
     expect(container.textContent).not.toMatch(/sc-3/)
+  })
+})
+
+describe('ScanForm — prop opcional onAccepted (design.md D-1, grupo 3)', () => {
+  it('se invoca exactamente una vez con la respuesta del Bridge tras una aceptación', async () => {
+    const user = userEvent.setup()
+    const onAccepted = vi.fn()
+    installAdapter(async (config) =>
+      successResponse(config, { scan_id: 'sc-onaccepted', status: 'queued' as const, message: 'ok' }),
+    )
+    render(<ScanForm onAccepted={onAccepted} />)
+    await fillRequiredFields(user)
+    await user.click(screen.getByLabelText(/declaración ética|autorización/i))
+    await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
+
+    await waitFor(() => expect(onAccepted).toHaveBeenCalledTimes(1))
+    expect(onAccepted).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<ScanResponse>>({ scan_id: 'sc-onaccepted', status: 'queued' }),
+    )
+  })
+
+  it('no se invoca ante ningún rechazo del Bridge', async () => {
+    const user = userEvent.setup()
+    const onAccepted = vi.fn()
+    installAdapter(async (config) => {
+      throw rejectionError(config, 401, problem)
+    })
+    render(<ScanForm onAccepted={onAccepted} />)
+    await fillRequiredFields(user)
+    await user.click(screen.getByLabelText(/declaración ética|autorización/i))
+    await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(SCAN_SUBMIT_MESSAGES.unauthorized)).toBeInTheDocument()
+    })
+    expect(onAccepted).not.toHaveBeenCalled()
+  })
+})
+
+describe('ScanForm — onAccepted, casos límite (3.3, D-1)', () => {
+  it('desmontar antes de que corra el efecto no invoca onAccepted ni propaga error', async () => {
+    const user = userEvent.setup()
+    const onAccepted = vi.fn()
+    installAdapter(async (config) =>
+      successResponse(config, { scan_id: 'sc-unmount', status: 'queued' as const, message: 'ok' }),
+    )
+    const { unmount } = render(<ScanForm onAccepted={onAccepted} />)
+    await fillRequiredFields(user)
+    await user.click(screen.getByLabelText(/declaración ética|autorización/i))
+    await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
+
+    expect(() => unmount()).not.toThrow()
+  })
+
+  it('sin la prop, el flujo de aceptación sigue mostrando la confirmación inline', async () => {
+    const user = userEvent.setup()
+    installAdapter(async (config) =>
+      successResponse(config, { scan_id: 'sc-default', status: 'queued' as const, message: 'ok' }),
+    )
+    render(<ScanForm />)
+    await fillRequiredFields(user)
+    await user.click(screen.getByLabelText(/declaración ética|autorización/i))
+    await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(SCAN_SUCCESS_MESSAGE)
+    })
   })
 })
 

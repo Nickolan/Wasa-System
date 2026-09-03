@@ -47,11 +47,21 @@ describe('Input: el error desplaza al helper', () => {
 })
 
 describe('Input: estado válido', () => {
-  it('applies the valid border class and not the error class', () => {
-    render(<Input label="Email" valid />)
-    const input = screen.getByLabelText('Email')
-    expect(input).toHaveClass('border-green-500')
-    expect(input).not.toHaveClass('border-red-500')
+  // R-1 (design.md unified-design-system): la clase de borde válido pasa a
+  // derivar del token `success` (D-2/D-11.2) — el test afirma que difiere
+  // de los otros dos estados, nunca un color concreto.
+  it('applies a border class distinct from rest and from error state', () => {
+    const { container: restContainer } = render(<Input label="Email en reposo" />)
+    const { container: errorContainer } = render(<Input label="Email con error" error="Email inválido" />)
+    const { container: validContainer } = render(<Input label="Email válido" valid />)
+
+    const restClass = restContainer.querySelector('input')?.className
+    const errorClass = errorContainer.querySelector('input')?.className
+    const validClass = validContainer.querySelector('input')?.className
+
+    expect(validClass).not.toBe(restClass)
+    expect(validClass).not.toBe(errorClass)
+    expect(validClass).not.toContain('border-red-500')
   })
 })
 

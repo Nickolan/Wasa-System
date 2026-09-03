@@ -130,33 +130,55 @@ El proyecto SHALL declarar sus dependencias de runtime y de desarrollo en manifi
 - **WHEN** se lee `fastapi_bridge/requirements.txt`
 - **THEN** no declara `passlib`, cuya última publicación es anterior al proyecto y cuya integración con las versiones actuales de bcrypt está rota
 
-### Requirement: El scaffold no toca la base de datos compartida
-El FastAPI Bridge SHALL convivir con el sistema WASA existente sobre la instancia PostgreSQL `db_fuzzing` sin alterar lo que no le pertenece. El servicio SHALL abrir conexión y emitir DDL **exclusivamente** para su propia tabla `users`; las tablas preexistentes `scans` y `vulnerabilities` NO SHALL ser declaradas, mapeadas, leídas, escritas ni migradas desde este servicio.
+### Requirement: El servicio no escribe ni migra la base de datos compartida
+
+El FastAPI Bridge SHALL convivir con el sistema WASA existente sobre la instancia PostgreSQL `db_fuzzing` sin alterar lo que no le pertenece. El servicio SHALL emitir DDL **exclusivamente** para su propia tabla `users`. Sobre las tablas preexistentes `scans` y `vulnerabilities` el servicio SHALL limitarse a **consultas de lectura**: NO SHALL insertar, actualizar ni borrar filas, NO SHALL emitir `CREATE`, `ALTER`, `DROP` ni `TRUNCATE`, NO SHALL migrarlas y NO SHALL declararlas como entidades del modelo de datos propio del servicio —el mecanismo de creación de esquema del arranque SHALL seguir sin poder alcanzarlas, ni siquiera por arrastre de un modelo futuro.
+
+La prohibición SHALL estar anclada por pruebas automatizadas que fallen ante una escritura, un DDL o un mapeo sobre esas tablas, y que sigan pasando ante una lectura legítima.
 
 #### Scenario: Sin conexión en el import
+
 - **WHEN** se importan los módulos del servicio
 - **THEN** no se construye ningún engine ni se abre ningún pool a nivel de módulo: `create_async_engine` y `create_all` no se invocan en el cuerpo de ningún módulo
 
 #### Scenario: El único DDL del arranque es la tabla propia
+
 - **WHEN** arranca la aplicación contra `db_fuzzing`
 - **THEN** el único DDL emitido es el `CREATE TABLE` idempotente de `users`, acotado explícitamente a esa tabla
 
-#### Scenario: Tablas existentes intactas
+#### Scenario: Sobre las tablas existentes sólo se lee
+
 - **WHEN** se revisa el código de producción del servicio fuera de los docstrings
-- **THEN** no existe ninguna sentencia, modelo ni migración que referencie las tablas `scans` o `vulnerabilities`
+- **THEN** toda instrucción que referencia `scans` o `vulnerabilities` es de lectura: no aparece ninguna inserción, actualización, borrado ni instrucción de definición de esquema sobre ellas
+
+#### Scenario: Las tablas existentes no forman parte del modelo de datos del servicio
+
+- **WHEN** se inspecciona el conjunto de tablas registradas en el modelo de datos declarativo del servicio
+- **THEN** contiene únicamente `users`: `scans` y `vulnerabilities` no están registradas, de modo que ninguna invocación del mecanismo de creación de esquema puede emitir DDL sobre ellas
+
+#### Scenario: Ninguna transacción de lectura se confirma
+
+- **WHEN** el servicio resuelve una consulta de lectura sobre las tablas existentes
+- **THEN** la transacción se cierra sin confirmar cambios: no hay ningún camino por el que una escritura accidental llegue a persistirse
 
 #### Scenario: Sin herramientas de migración sobre la base compartida
+
 - **WHEN** se inspecciona el árbol del proyecto
 - **THEN** no hay configuración de Alembic ni ningún otro mecanismo que pueda emitir `ALTER`, `DROP` o `TRUNCATE` sobre `db_fuzzing`
 
-### Requirement: Superficie de API expuesta por el servicio con scan montado
+#### Scenario: La prohibición está anclada por tests
 
-La aplicación SHALL exponer, además del endpoint de salud, las dos operaciones de autenticación (`POST /api/v1/auth/register` y `POST /api/v1/auth/login`) y la operación de disparo de escaneo (`POST /api/v1/scan/start`), cada una montada desde `create_app()` por el change que implementó sus operaciones (auth por CHANGE-05, scan por este change). Montar un router SHALL seguir siendo una decisión explícita del change correspondiente, nunca un efecto colateral de otro change.
+- **WHEN** un change futuro agregue al código de producción una escritura, un DDL o un mapeo del modelo de datos sobre `scans` o `vulnerabilities`
+- **THEN** la suite de tests falla señalando el archivo infractor
+
+### Requirement: Superficie de API expuesta por el servicio con el dashboard montado
+
+La aplicación SHALL exponer el endpoint de salud, las dos operaciones de autenticación (`POST /api/v1/auth/register` y `POST /api/v1/auth/login`), la operación de disparo de escaneo (`POST /api/v1/scan/start`) y la operación de consulta de resultados (`GET /api/v1/dashboard`), cada una montada desde `create_app()` por el change que implementó sus operaciones (auth por CHANGE-05, scan por CHANGE-12, dashboard por este change). Montar un router SHALL seguir siendo una decisión explícita del change correspondiente, nunca un efecto colateral de otro change.
 
 #### Scenario: Rutas de aplicación registradas
 
 - **WHEN** se inspecciona `app.routes` descartando las rutas internas de FastAPI (`/docs`, `/openapi.json`, `/redoc`)
-- **THEN** las rutas de aplicación registradas son exactamente `GET /health`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login` y `POST /api/v1/scan/start`
+- **THEN** las rutas de aplicación registradas son exactamente `GET /health`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `POST /api/v1/scan/start` y `GET /api/v1/dashboard`
 
 #### Scenario: Los endpoints de auth están disponibles
 
@@ -166,9 +188,19 @@ La aplicación SHALL exponer, además del endpoint de salud, las dos operaciones
 #### Scenario: El endpoint de scan está disponible y protegido
 
 - **WHEN** se hace `POST /api/v1/scan/start`
-- **THEN** la respuesta no es `404`: el router de scan, montado por este change, atiende la solicitud y aplica su propio guard de autenticación sobre ella
+- **THEN** la respuesta no es `404`: el router de scan atiende la solicitud y aplica su propio guard de autenticación sobre ella
+
+#### Scenario: El endpoint de dashboard está disponible y es público
+
+- **WHEN** se hace `GET /api/v1/dashboard` sin cabecera de autorización
+- **THEN** la respuesta no es `404` ni `401`: el router de dashboard, montado por este change, atiende la solicitud sin exigir credencial
+
+#### Scenario: Montar el dashboard no altera el guard de scan
+
+- **WHEN** se hace `POST /api/v1/scan/start` sin credencial, con el router de dashboard montado
+- **THEN** la respuesta sigue siendo `401`: que exista una operación pública no relaja la política de las operaciones protegidas
 
 #### Scenario: El endpoint de salud conserva su contrato
 
-- **WHEN** se hace `GET /health` con los routers de auth y de scan montados
+- **WHEN** se hace `GET /health` con los routers de auth, scan y dashboard montados
 - **THEN** la respuesta sigue siendo `200` con body exactamente `{"status": "ok", "service": "wasa-fastapi-bridge"}`

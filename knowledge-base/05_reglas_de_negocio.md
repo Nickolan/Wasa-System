@@ -27,7 +27,7 @@ Cada regla tiene un código único `RN-WS-{NN}` (tal como está codificado en `d
 
 ## Dominio: Frontend / Navegación (RN-WS-08, 10)
 
-- **RN-WS-08**: Tras recibir 202 Accepted del Bridge, el frontend redirige automáticamente al Dashboard existente (React/Node.js). — HU-05-01
+- **RN-WS-08** *(enmendada por `frontend-info-and-pending-screens`, 2026-08-31)*: Tras recibir 202 Accepted del Bridge, el frontend **ya no** redirige al Dashboard. El formulario es reemplazado, dentro de la misma página (`/scan`), por una pantalla de espera persistente que informa que el escaneo está en curso, que tarda aproximadamente diez minutos y que el reporte llega por correo electrónico a la casilla de la cuenta con la que el usuario inició sesión (RN-WS-16, HU-04-03 de CHANGE-23). El Dashboard sigue siendo alcanzable desde el `Navbar`, pero ninguna respuesta del Bridge —aceptación incluida— dispara una navegación automática. *(Redacción original, ya no vigente: "Tras recibir 202 Accepted del Bridge, el frontend redirige automáticamente al Dashboard existente (React/Node.js)." Dejaba de describir el sistema real desde que CHANGE-23 hizo que el reporte llegue por email: expulsar al usuario a un Dashboard donde, en los primeros minutos, no hay nada que ver, resolvía un problema que ya no existía.)* — HU-05-01
 - **RN-WS-10**: El formulario de escaneo está OCULTO para usuarios no autenticados. En su lugar se muestra un muro de autenticación con botones "Iniciar Sesión" y "Crear Cuenta". — HU-06-01, HU-02-01
 
 ## Dominio: Excepciones globales

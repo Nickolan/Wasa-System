@@ -200,6 +200,14 @@
       "sessions": 0,
       "memories": 5,
       "prompts": 0
+    },
+    {
+      "id": "916aa4da",
+      "created_by": "Lauti Ferreria",
+      "created_at": "2026-09-03T04:27:11Z",
+      "sessions": 0,
+      "memories": 18,
+      "prompts": 0
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@entities/user'
@@ -119,6 +119,36 @@ describe('ScanFormWidget — el control de cierre sólo existe con sesión (4.9)
   it('sin sesión no está en el documento', () => {
     render(<ScanFormWidget onRequestLogin={vi.fn()} onRequestRegister={vi.fn()} />)
     expect(screen.queryByRole('button', { name: /cerrar sesión/i })).toBeNull()
+  })
+})
+
+describe('ScanFormWidget — reenvío de onScanAccepted (design.md D-1, task 3.4)', () => {
+  it('reenvía onScanAccepted a ScanForm como onAccepted: se invoca tras una aceptación', async () => {
+    const user = userEvent.setup()
+    const onScanAccepted = vi.fn()
+    useAuthStore.getState().login('tok', 'a@b.com')
+    axiosInstance.defaults.adapter = async (config) => ({
+      data: { scan_id: 'sc-widget', status: 'queued' as const, message: 'ok' },
+      status: 202,
+      statusText: '',
+      headers: {},
+      config,
+    })
+
+    render(<ScanFormWidget onRequestLogin={vi.fn()} onRequestRegister={vi.fn()} onScanAccepted={onScanAccepted} />)
+    await user.type(screen.getByLabelText(/URL objetivo/i), 'http://dvwa.local')
+    await user.type(screen.getByLabelText(/PHPSESSID/i), 'a1b2c3')
+    await user.click(screen.getByLabelText(/declaración ética|autorización/i))
+    await user.click(screen.getByRole('button', { name: /iniciar escaneo/i }))
+
+    await waitFor(() => expect(onScanAccepted).toHaveBeenCalledTimes(1))
+    expect(onScanAccepted).toHaveBeenCalledWith(expect.objectContaining({ scan_id: 'sc-widget' }))
+  })
+
+  it('sin la prop, el widget se comporta igual que antes (formulario funcional, sin error)', () => {
+    useAuthStore.getState().login('tok', 'a@b.com')
+    render(<ScanFormWidget onRequestLogin={vi.fn()} onRequestRegister={vi.fn()} />)
+    expect(screen.getByLabelText(/URL objetivo/i)).toBeInTheDocument()
   })
 })
 

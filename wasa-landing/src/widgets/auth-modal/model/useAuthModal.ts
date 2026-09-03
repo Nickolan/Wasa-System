@@ -15,10 +15,10 @@ export interface AuthModalState {
 }
 
 /**
- * Único dueño del estado "qué modal está abierto" en toda la Landing
- * (D-1). Su único llamador SHALL ser `pages/LandingPage` — los widgets que
- * disparan una apertura reciben `openLogin`/`openRegister` por prop, nunca
- * llaman a este hook ellos mismos.
+ * Único dueño del estado "qué modal está abierto" en su página (D-1). Sus
+ * llamadores SHALL ser páginas (`pages/ScanPage`), nunca widgets — los
+ * widgets que disparan una apertura reciben `openLogin`/`openRegister` por
+ * prop, nunca llaman a este hook ellos mismos.
  */
 export function useAuthModal(): AuthModalState {
   const [mode, setMode] = useState<AuthModalMode>(null)

@@ -148,12 +148,15 @@ criterio vive en cuál de las dos partes.
     token guardado en `localStorage` desde DevTools → Application, y
     enviar el formulario de escaneo. Debe verse un `401` en la pestaña
     Network **y** un mensaje de sesión expirada/inválida en la interfaz.
-12. **Escaneo real y redirección.** Loguear de nuevo (o refrescar sesión),
-    completar el formulario con `WASA_E2E_TARGET_URL` y pegar a mano el
-    valor vigente de `WASA_E2E_PHPSESSID` (nunca lo transcribas a este
-    archivo ni a ningún otro archivo versionado), marcar el checkbox ético
-    y enviar. Debe verse el mensaje de éxito y la redirección automática a
-    `VITE_DASHBOARD_URL`.
+12. **Escaneo real y pantalla de espera.** Loguear de nuevo (o refrescar
+    sesión), completar el formulario con `WASA_E2E_TARGET_URL` y pegar a
+    mano el valor vigente de `WASA_E2E_PHPSESSID` (nunca lo transcribas a
+    este archivo ni a ningún otro archivo versionado), marcar el checkbox
+    ético y enviar. Debe verse la pantalla de espera (`scan-pending-screen`)
+    con la referencia del escaneo, y su salida "Ver el Dashboard" debe
+    navegar internamente a `/dashboard` dentro de esta misma Landing (sin
+    abrir pestaña nueva ni depender de ninguna variable de entorno —
+    CHANGE-26 retiró `VITE_DASHBOARD_URL`).
 13. **Execution history de n8n.** Abrir la UI de n8n y confirmar que la
     ejecución del escaneo del paso 12 aparece en el historial, disparada
     por el Webhook Trigger (no por el Schedule Trigger). Anotar el id de

@@ -1,8 +1,8 @@
 ## Purpose
 
-Define el envío de un escaneo desde la Landing: cómo se compone y despacha la solicitud al FastAPI Bridge, qué significa cada respuesta para quien está mirando la pantalla, qué mensaje ve ante cada rechazo, qué pasa cuando el escaneo queda encolado (la redirección al Dashboard de RN-WS-08), y cómo se renderiza y se habilita el formulario. Es el consumidor del contrato de `scan-form-contracts` y del canal de `http-client`, y el último tramo del Flujo 3 de la KB.
+Define el envío de un escaneo desde la Landing: cómo se compone y despacha la solicitud al FastAPI Bridge, qué significa cada respuesta para quien está mirando la pantalla, qué mensaje ve ante cada rechazo, qué pasa cuando el escaneo queda encolado —la aceptación entrega el control a la pantalla de espera de `scan-pending-screen`, dentro de la misma página, en vez de redirigir al Dashboard (RN-WS-08, enmendada por `frontend-info-and-pending-screens`)—, y cómo se renderiza y se habilita el formulario. Es el consumidor del contrato de `scan-form-contracts` y del canal de `http-client`, y el último tramo del Flujo 3 de la KB para el envío mismo del escaneo.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: La solicitud lleva exactamente el cuerpo del contrato, y la credencial no se adjunta a mano
 
@@ -115,34 +115,6 @@ Ningún otro rechazo SHALL cerrar la sesión.
 
 - **WHEN** el envío es rechazado con `429` o con `502`
 - **THEN** la aplicación sigue autenticada y el formulario sigue disponible con los datos que el usuario ya había cargado
-
-### Requirement: Un escaneo encolado lleva al Dashboard
-
-Cuando el Bridge acepta el escaneo (`202`), el formulario SHALL mostrar una confirmación de éxito y a continuación SHALL navegar el navegador al Dashboard existente, cuya URL proviene de la puerta única de configuración de entorno (RN-WS-08, HU-05-01). La confirmación SHALL ser visible antes de la navegación, para que el usuario entienda por qué cambió de pantalla.
-
-La navegación SHALL ocurrir **únicamente** ante la aceptación: ningún rechazo ni fallo de red SHALL navegar. Si el componente deja de estar montado antes de que la navegación se dispare, esta SHALL NOT ejecutarse.
-
-El destino SHALL ser el Dashboard y NO la URL base del Bridge: son dos destinos distintos.
-
-#### Scenario: Aceptación y redirección
-
-- **WHEN** el Bridge acepta el escaneo con `202`
-- **THEN** el usuario ve la confirmación de éxito y el navegador termina navegando a la URL del Dashboard
-
-#### Scenario: Ningún rechazo redirige
-
-- **WHEN** el envío es rechazado con `401`, `400`, `422`, `429`, `502` o falla sin respuesta
-- **THEN** el navegador no navega a ninguna parte y el usuario permanece en la Landing
-
-#### Scenario: El destino es el Dashboard, no el Bridge
-
-- **WHEN** se compara el destino de la navegación con la URL base del cliente HTTP
-- **THEN** son distintos: la navegación va al Dashboard configurado
-
-#### Scenario: Desmontaje antes de la navegación
-
-- **WHEN** el escaneo es aceptado y el formulario deja de estar montado antes de que la navegación se dispare
-- **THEN** la navegación no se ejecuta y no se propaga ningún error
 
 ### Requirement: Durante el envío el formulario está en curso y no admite un segundo disparo
 
